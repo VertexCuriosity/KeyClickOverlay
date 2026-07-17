@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="24"
+   height="24"
+   viewBox="0 0 24 24"
+   fill="none"
+   stroke="#E5E5E5"
+   stroke-width="2"
+   stroke-linecap="round"
+   stroke-linejoin="round"
+   version="1.1"
+   id="svg1"
+   style="stroke:#e5e5e5;stroke-opacity:1"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+	<rect
+		 width="24"
+		 height="24"
+		 fill="#000000"
+		 fill-opacity="0"
+		 stroke="none"/>
+  <path
+     d="m 12,5.2617187 c -0.385631,0 -0.771347,0.1464143 -1.064453,0.4394532 v 0.00195 L 0.4921875,16.146484 c -0.32956268,0.31976 -0.47043558,0.728978 -0.45703125,1.125 0.02461256,0.727162 0.60385307,1.464314 1.51171875,1.460938 0.4051557,-0.0016 0.7941226,-0.168161 1.0761719,-0.458985 L 12,8.8964844 21.376953,18.275391 h 0.002 c 0.675816,0.700239 1.640528,0.525479 2.146485,0.01953 0.506876,-0.506869 0.670668,-1.48365 -0.01953,-2.150391 h -0.002 L 13.064453,5.703125 v -0.00195 C 12.771347,5.408133 12.385631,5.2617187 12,5.2617187 Z"
+     style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;stroke:none;stroke-linecap:butt;stroke-linejoin:miter;enable-background:accumulate;stop-color:#000000;stop-opacity:1;fill:#e5e5e5;fill-opacity:1"
+     id="path3" />
+</svg>

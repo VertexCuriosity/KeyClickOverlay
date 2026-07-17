@@ -1,0 +1,32 @@
+# Visual Studio
+.vs/
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+
+# Temporary and cache files
+*.tmp
+*.cache
+
+# NuGet
+packages/
+
+# Logs
+*.log
+
+# Signing certificates
+*.pfx
+*.p12
+
+# Generated package output
+AppPackages/
+BundleArtifacts/
+*.appx
+*.appxbundle
+*.msix
+*.msixbundle
+*.msixupload
+*.appxsym

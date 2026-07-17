@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="100"
+   height="100"
+   viewBox="0 0 100 100"
+   fill="none"
+   stroke="#E5E5E5"
+   stroke-width="2"
+   stroke-linecap="round"
+   stroke-linejoin="round"
+   version="1.1"
+   id="svg1"
+   style="stroke:#e5e5e5;stroke-opacity:1"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <rect
+     width="100"
+     height="100"
+     fill="#000000"
+     fill-opacity="0"
+     stroke="none"
+     id="rect1" />
+  <path
+     d="M 94.027342,32.776367 A 6.020209,6.079929 0 0 0 88.00781,38.854492 V 55.065429 H 11.992186 V 39.608398 A 6.020209,6.079929 0 0 0 5.9726537,33.52832 6.020209,6.079929 0 0 0 -0.0468775,39.608398 v 21.537109 a 6.020811,6.080537 0 0 0 6.0195312,6.078126 H 94.027342 a 6.020811,6.080537 0 0 0 6.019538,-6.078126 V 38.854492 a 6.020209,6.079929 0 0 0 -6.019538,-6.078125 z"
+     style="baseline-shift:baseline;display:inline;overflow:visible;opacity:1;vector-effect:none;fill:#e5e5e5;fill-opacity:1;stroke:none;stroke-linecap:butt;stroke-linejoin:miter;enable-background:accumulate;stop-color:#000000;stop-opacity:1"
+     id="path3" />
+</svg>
