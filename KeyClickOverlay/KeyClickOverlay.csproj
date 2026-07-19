@@ -12,7 +12,7 @@
 		<Description>Customizable keyboard and mouse input overlay.</Description>
 		<Company>VertexCuriosity</Company>
 		<Authors>Suus | VertexCuriosity</Authors>
-		<Copyright>Copyright © 2026 Suus | VertexCuriosity</Copyright>
+		<Copyright>Copyright © 2026 VertexCuriosity</Copyright>
 
 		<!-- Prevent Git commit hash from being appended to the product version -->
 		<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
