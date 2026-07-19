@@ -35,7 +35,6 @@
 		<PublishTrimmed>false</PublishTrimmed>
 	</PropertyGroup>
 
-	<!-- Ensure Debug/Release x64 build as true x64 -->
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
 		<PlatformTarget>x64</PlatformTarget>
 	</PropertyGroup>
@@ -72,6 +71,10 @@
 		<None Include="assets\**\*" Exclude="assets\fonts\Inter-Regular.ttf">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Content Include="KeyClickOverlay.ico" />
 	</ItemGroup>
 
 	<ItemGroup>

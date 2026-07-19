@@ -2527,26 +2527,34 @@ namespace KeyClickOverlay
             var changePresetSwitchHotkeyItem = new MenuItem
             {
                 Header = CreateShortcutMenuHeader("Preset switch shortcut", presetSwitchShortcutText),
-                ToolTip = "Click to change this shortcut."
+                ToolTip =
+                    "Switches between the current preset and the previously used preset.\n\n" +
+                    "Click to change this shortcut."
             };
 
             var changePresetSwitchToggleHotkeyItem = new MenuItem
             {
                 Header = CreateShortcutMenuHeader("Preset-switch toggle shortcut", presetSwitchToggleShortcutText),
-                ToolTip = "Click to change this shortcut."
+                ToolTip =
+                    "Enables or disables the preset switch shortcut.\n\n" +
+                    "Click to change this shortcut."
             };
 
             var changeClearOverlayHotkeyItem = new MenuItem
             {
                 Header = CreateShortcutMenuHeader("Clear overlay shortcut", clearOverlayShortcutText),
-                ToolTip = "Click to change this shortcut."
+                ToolTip =
+                    "Removes all currently displayed keys.\n\n" +
+                    "Click to change this shortcut."
             };
 
             // Existing shortcut editor moved into the submenu
             var changeHotkeyItem = new MenuItem
             {
                 Header = CreateShortcutMenuHeader("Transparent-mode shortcut", transparentModeShortcutText),
-                ToolTip = "Click to change this shortcut."
+                ToolTip =
+                    "Enables or disables Transparent Mode, allowing mouse clicks to pass through the overlay.\n\n" +
+                    "Click to change this shortcut."
             };
 
             customizeShortcutsMenu.Items.Add(changePresetSwitchHotkeyItem);
