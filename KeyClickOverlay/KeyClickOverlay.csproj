@@ -5,6 +5,18 @@
 		<TargetFramework>net8.0-windows</TargetFramework>
 		<UseWPF>true</UseWPF>
 
+		<!-- Application information -->
+		<Version>1.0.0</Version>
+		<AssemblyTitle>Customizable keyboard and mouse input overlay.</AssemblyTitle>
+		<Product>KeyClickOverlay</Product>
+		<Description>Customizable keyboard and mouse input overlay.</Description>
+		<Company>VertexCuriosity</Company>
+		<Authors>Suus | VertexCuriosity</Authors>
+		<Copyright>Copyright © 2026 VertexCuriosity</Copyright>
+
+		<!-- Prevent Git commit hash from being appended to the product version -->
+		<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<LangVersion>12.0</LangVersion>
@@ -20,7 +32,6 @@
 		<SelfContained>true</SelfContained>
 
 		<PublishSingleFile>false</PublishSingleFile>
-
 		<PublishTrimmed>false</PublishTrimmed>
 	</PropertyGroup>
 
@@ -36,7 +47,7 @@
 		<PackageReference Include="Microsoft-WindowsAPICodePack-Shell" Version="1.1.5" />
 		<PackageReference Include="ModernWpfUI" Version="0.9.6" />
 		<PackageReference Include="MouseKeyHook" Version="5.7.1" />
-		<PackageReference Include="PixiEditor.ColorPicker" Version="3.4.2" />
+		<PackageReference Include="PixiEditor.ColorPicker" Version="3.4.2.3" />
 		<PackageReference Include="SharpVectors.Wpf" Version="1.8.5" />
 	</ItemGroup>
 
