@@ -148,6 +148,9 @@ namespace KeyClickOverlay
             [JsonPropertyName("hideTransparentInfo")]
             public bool HideTransparentInfo { get; set; } // hide the transparent-to-mouse mode info popup when true 
 
+            [JsonPropertyName("privacyNoticeShown")]
+            public bool PrivacyNoticeShown { get; set; } // hide the Privacy Notification info popup when true 
+
             [JsonPropertyName("lastPresetPath")]
             public string? LastPresetPath { get; set; } // absolute path to the last used preset JSON file, or null if none
 
@@ -361,6 +364,30 @@ namespace KeyClickOverlay
             }
         }
 
+        /// <summary>Shows the privacy notice once, when KeyClickOverlay is opened for the first time. </summary>
+        private void ShowFirstRunPrivacyNotice()
+        {
+            if (_prefs.PrivacyNoticeShown)
+                return;
+
+            ShowModernInfo(
+                title: "Welcome to KeyClickOverlay",
+                message:
+                    "Before you start using KeyClickOverlay, please note that " +
+                    "the overlay displays all keyboard input it detects, " +
+                    "including text entered into login forms and password fields.\n\n" +
+
+                    "Disable or close the overlay before entering passwords or other " +
+                    "sensitive information, especially while recording or sharing your screen.\n\n" +
+
+                    "KeyClickOverlay does not record, store, or transmit your input.",
+                ok: "I understand",
+                icon: DialogIcon.Warning
+            );
+
+            _prefs.PrivacyNoticeShown = true;
+            SavePrefs();
+        }
 
         // === Presets (named JSON files under %AppData%\KeyClickOverlay\presets) ===
 
@@ -1308,6 +1335,7 @@ namespace KeyClickOverlay
         {
             SetupThumbnailToolbarButton();
             TryApplyLastPresetOnStartup();
+            ShowFirstRunPrivacyNotice();
         }
 
         /// <summary>Add a Windows taskbar thumbnail toolbar button to toggle mouse transparency.</summary>
