@@ -111,6 +111,7 @@ namespace KeyClickOverlay
         private Border? _mouseBorder;
         private const string SpaceKeyTag = "SPACE_KEY";
         private const string PauseOverlayKeyId = "__PAUSE_OVERLAY__";
+        private ScaleTransform? _pauseIndicatorScale;               // Scale transform currently used by the persistent Pause indicator.
         private StackPanel? _keysOutsideContainer;
         private StackPanel? _lineHost;
         private bool _previewFontKeysActive = false;
@@ -5379,6 +5380,8 @@ namespace KeyClickOverlay
         /// <summary>Immediately clear all visible key tiles and reset key state. Used by the taskbar "Clear keys" button.</summary>
         private void ClearAllKeysFromOverlay()
         {
+            StopPausePulse();
+
             if (_activeKeyBoxes.Count == 0 && _pillOrder.Count == 0)
                 return; // Nothing to clear
 
@@ -5478,12 +5481,103 @@ namespace KeyClickOverlay
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 host.Opacity = 1.0;
+                StartPausePulse(pauseScale);
             }), DispatcherPriority.Render);
+        }
+
+        /// <summary>
+        /// Continuously pulse the Pause indicator between the normal pressed-key size
+        /// and the maximum released-key size.
+        /// </summary>
+        private void StartPausePulse(ScaleTransform scale)
+        {
+            _pauseIndicatorScale = scale;
+
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+
+            scale.ScaleX = 1.0;
+            scale.ScaleY = 1.0;
+
+            // Smooth movement while growing.
+            var growEase = new SineEase
+            {
+                EasingMode = EasingMode.EaseInOut
+            };
+
+            // Fast at first, then gently slows down into the pressed size.
+            var shrinkEase = new QuinticEase
+            {
+                EasingMode = EasingMode.EaseOut
+            };
+
+            var pulseX = new DoubleAnimationUsingKeyFrames
+            {
+                RepeatBehavior = RepeatBehavior.Forever
+            };
+
+            pulseX.KeyFrames.Add(new EasingDoubleKeyFrame(
+                1.0,
+                KeyTime.FromTimeSpan(TimeSpan.Zero)));
+
+            // Grow
+            pulseX.KeyFrames.Add(new EasingDoubleKeyFrame(
+                KeyReleasePopScale,
+                KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1000)))
+            {
+                EasingFunction = growEase
+            });
+
+            // Shrink with a soft landing
+            pulseX.KeyFrames.Add(new EasingDoubleKeyFrame(
+                1.0,
+                KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(2400)))
+            {
+                EasingFunction = shrinkEase
+            });
+
+            // Rest at the pressed size
+            pulseX.KeyFrames.Add(new DiscreteDoubleKeyFrame(
+                1.0,
+                KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(3800))));
+
+            var pulseY = pulseX.Clone();
+
+            scale.BeginAnimation(
+                ScaleTransform.ScaleXProperty,
+                pulseX,
+                HandoffBehavior.SnapshotAndReplace);
+
+            scale.BeginAnimation(
+                ScaleTransform.ScaleYProperty,
+                pulseY,
+                HandoffBehavior.SnapshotAndReplace);
+        }
+
+        /// <summary>
+        /// Stop the Pause indicator pulse and release its animation references.
+        /// </summary>
+        private void StopPausePulse()
+        {
+            if (_pauseIndicatorScale == null)
+                return;
+
+            _pauseIndicatorScale.BeginAnimation(
+                ScaleTransform.ScaleXProperty,
+                null);
+
+            _pauseIndicatorScale.BeginAnimation(
+                ScaleTransform.ScaleYProperty,
+                null);
+
+            _pauseIndicatorScale = null;
         }
 
         /// <summary>Immediately remove the persistent Pause tile.</summary>
         private void RemovePersistentPauseKey()
         {
+            StopPausePulse();
+
             if (!_activeKeyBoxes.TryGetValue(PauseOverlayKeyId, out var entry))
                 return;
 
