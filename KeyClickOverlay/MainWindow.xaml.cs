@@ -6781,20 +6781,9 @@ namespace KeyClickOverlay
             if (!_downKeys.Add(e.KeyCode))
                 return;
 
-            // Ctrl+Alt+Shift+F11: clear all currently drawn overlay keys/buttons.
-            // This is a hidden overlay-maintenance shortcut, so it is handled before key drawing.
-            if (GetHeldModifiersFromState() == _prefs.ClearOverlayHotkeyModifiers &&
-                e.KeyCode == _prefs.ClearOverlayHotkeyKey)
-            {
-                Dispatcher.Invoke(() =>
-                {
-                    ClearAllKeysFromOverlay();
-                });
-                return;
-            }
-
-            // Track physical state using the raw key code; ignore auto-repeat while held
-            if (!_downKeys.Add(e.KeyCode))
+            // While paused, keep tracking physical key state (for modifier-based hotkeys)
+            // but don't build or show any key tiles.
+            if (_overlayPaused)
                 return;
 
             // Modifier went down → cancel any pending release for *that* modifier
