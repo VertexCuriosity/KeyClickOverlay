@@ -370,20 +370,22 @@ namespace KeyClickOverlay
             if (_prefs.PrivacyNoticeShown)
                 return;
 
-            ShowModernInfo(
-                title: "Welcome to KeyClickOverlay",
+            bool acknowledged = ShowModernAcknowledgement(
+                title: "Privacy Notice",
                 message:
-                    "Before you start using KeyClickOverlay, please note that " +
-                    "the overlay displays all keyboard input it detects, " +
-                    "including text entered into login forms and password fields.\n\n" +
+                    "KeyClickOverlay displays all keyboard input it detects, " +
+                    "including text entered into login and password fields.\n\n" +
 
                     "Disable or close the overlay before entering passwords or other " +
                     "sensitive information, especially while recording or sharing your screen.\n\n" +
 
                     "KeyClickOverlay does not record, store, or transmit your input.",
-                ok: "I understand",
+                acknowledgeText: "I understand",
                 icon: DialogIcon.Warning
             );
+
+            if (!acknowledged)
+                return;
 
             _prefs.PrivacyNoticeShown = true;
             SavePrefs();
@@ -6030,6 +6032,169 @@ namespace KeyClickOverlay
             this.Topmost = true;      // promote overlay
             ReassertTopmost();
         }
+
+
+        /// <summary>
+        /// Shows a themed acknowledgement dialog.
+        /// Returns true only when the acknowledgement button is clicked.
+        /// Closing the window or pressing Escape returns false.
+        /// </summary>
+        private bool ShowModernAcknowledgement(
+            string title,
+            string message,
+            string acknowledgeText = "OK",
+            DialogIcon icon = DialogIcon.None)
+        {
+            var outer = new Grid
+            {
+                SnapsToDevicePixels = true,
+                UseLayoutRounding = true
+            };
+
+            TextOptions.SetTextRenderingMode(outer, TextRenderingMode.ClearType);
+            TextOptions.SetTextFormattingMode(outer, TextFormattingMode.Display);
+
+            outer.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width = icon == DialogIcon.None
+                        ? new GridLength(0)
+                        : GridLength.Auto
+                });
+
+            outer.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width = new GridLength(1, GridUnitType.Star)
+                });
+
+            var iconElement = BuildDialogIcon(icon);
+            Grid.SetColumn(iconElement, 0);
+            outer.Children.Add(iconElement);
+
+            var content = new Grid();
+            content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var text = new TextBlock
+            {
+                Text = message,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 520,
+                Margin = new Thickness(0, 16, 16, 12)
+            };
+            Grid.SetRow(text, 0);
+
+            var acknowledgeButton = new Button
+            {
+                Content = acknowledgeText,
+                MinWidth = 88,
+                IsDefault = true
+            };
+
+            var buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 0, 16, 16)
+            };
+
+            buttons.Children.Add(acknowledgeButton);
+            Grid.SetRow(buttons, 1);
+
+            content.Children.Add(text);
+            content.Children.Add(buttons);
+
+            Grid.SetColumn(content, 1);
+            outer.Children.Add(content);
+
+            var dlg = new Window
+            {
+                Owner = this,
+                Title = title,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                ShowInTaskbar = false,
+                ResizeMode = ResizeMode.NoResize,
+                SizeToContent = SizeToContent.WidthAndHeight,
+                WindowStyle = WindowStyle.None,
+                Topmost = true,
+                Content = outer
+            };
+
+            WindowHelper.SetUseModernWindowStyle(dlg, true);
+            ThemeManager.SetIsThemeAware(dlg, true);
+
+            var surfaceKeys = new[] { "LayerFillColorDefaultBrush" };
+
+            bool darkNow =
+                ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark;
+
+            var fallbackSurface = new SolidColorBrush(
+                darkNow
+                    ? Color.FromRgb(43, 43, 43)
+                    : Color.FromRgb(249, 249, 249));
+
+            if (fallbackSurface.CanFreeze)
+                fallbackSurface.Freeze();
+
+            ApplyOpaqueLayerBackground(
+                dlg,
+                outer,
+                surfaceKeys,
+                fallbackSurface);
+
+            dlg.SourceInitialized += (_, __) =>
+            {
+                try
+                {
+                    NativeMethods.TryApplyWin11RoundedCorners(dlg);
+
+                    bool isDark =
+                        ThemeManager.Current.ActualApplicationTheme ==
+                        ApplicationTheme.Dark;
+
+                    NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, isDark);
+                }
+                catch
+                {
+                    // Best-effort visual styling only.
+                }
+            };
+
+            bool acknowledged = false;
+
+            acknowledgeButton.Click += (_, __) =>
+            {
+                acknowledged = true;
+                dlg.Close();
+            };
+
+            // Escape or closing the window leaves acknowledged as false.
+            dlg.PreviewKeyDown += (_, e) =>
+            {
+                if (e.Key == Key.Escape)
+                {
+                    e.Handled = true;
+                    dlg.Close();
+                }
+            };
+
+            _topmostTarget = dlg;
+            this.Topmost = false;
+            dlg.Topmost = true;
+            ReassertTopmost();
+
+            PlayDialogSound(icon);
+            dlg.ShowDialog();
+
+            _topmostTarget = null;
+            dlg.Topmost = false;
+            this.Topmost = true;
+            ReassertTopmost();
+
+            return acknowledged;
+        }
+
 
         // Auto-closing info popup (non-modal), e.g., "Preset saved" toast
         private void ShowModernInfoAuto(string title, string message, int milliseconds = 2500, DialogIcon icon = DialogIcon.Info)
