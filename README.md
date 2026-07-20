@@ -73,6 +73,6 @@ If you enjoy using KeyClickOverlay, starring the repository is greatly appreciat
 
 ## License
 
-KeyClickOverlay is licensed under the MIT License.
+KeyClickOverlay is licensed under the GPL-3.0-or-later.
 
 See the [LICENSE](LICENSE) file for details.
