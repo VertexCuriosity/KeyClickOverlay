@@ -52,7 +52,7 @@ namespace KeyClickOverlay
         private const double FrameTotalInset = 2;             // keep child inset stable across modes
         private const double StandardGapFactor = 0.30;        // left gap between all keys
         private const double MainMenuWidth = 285.0;           // fixed width of the main context menu
-        
+
 
         // === State ===
         private readonly Brush _fullyTransparentBrush = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
@@ -727,7 +727,7 @@ namespace KeyClickOverlay
                     "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
-        
+
         /// <summary>Toggle between the active preset and the preset that was active before it.</summary>
         private void TogglePreviousPreset()
         {
@@ -1154,7 +1154,7 @@ namespace KeyClickOverlay
         {
             // ---------- Load persisted prefs + verify assets ----------
             InitializeComponent();
-            
+
             // Minimum working size for overlay (prevents unusably tiny windows)
             this.MinWidth = 80;  // pick what feels right for your UI
             this.MinHeight = 45;  // small but still usable
@@ -2718,8 +2718,8 @@ namespace KeyClickOverlay
             InsertAfter(cm, toggleMouseItem, sepAfterTransparent);
 
             // "Set mouse color" (under Toggle Mouse)
-            var mouseColorItem = new MenuItem 
-            { 
+            var mouseColorItem = new MenuItem
+            {
                 Header = "Set mouse color",
                 ToolTip = "Pick the color of the mouse image."
             };
@@ -5884,7 +5884,7 @@ namespace KeyClickOverlay
             {
                 Owner = this,
                 Title = title,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
                 ShowInTaskbar = false,
                 ResizeMode = ResizeMode.NoResize,
                 SizeToContent = SizeToContent.WidthAndHeight,
@@ -5985,7 +5985,7 @@ namespace KeyClickOverlay
             {
                 Owner = this,
                 Title = title,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
                 ShowInTaskbar = false,
                 ResizeMode = ResizeMode.NoResize,
                 SizeToContent = SizeToContent.WidthAndHeight,
@@ -6224,7 +6224,7 @@ namespace KeyClickOverlay
             {
                 Owner = this,
                 Title = title,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
                 ShowInTaskbar = false,
                 ResizeMode = ResizeMode.NoResize,
                 SizeToContent = SizeToContent.WidthAndHeight,
