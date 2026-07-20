@@ -197,6 +197,14 @@ namespace KeyClickOverlay
             [JsonPropertyName("clearOverlayHotkeyModifiers")]
             public ModifierKeys ClearOverlayHotkeyModifiers { get; set; }
                 = ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift;
+
+            // Pause/resume overlay shortcut: default Ctrl+Shift+F11
+            [JsonPropertyName("pauseOverlayHotkeyKey")]
+            public Keys PauseOverlayHotkeyKey { get; set; } = Keys.F11;
+
+            [JsonPropertyName("pauseOverlayHotkeyModifiers")]
+            public ModifierKeys PauseOverlayHotkeyModifiers { get; set; }
+                = ModifierKeys.Control | ModifierKeys.Shift;
         }
 
         /// <summary>JSON options for prefs/presets</summary>
@@ -270,6 +278,14 @@ namespace KeyClickOverlay
             return FormatShortcutLabel(
                 _prefs.ClearOverlayHotkeyModifiers,
                 _prefs.ClearOverlayHotkeyKey);
+        }
+
+        /// <summary>Human-readable label for the pause/resume overlay shortcut.</summary>
+        private string GetPauseOverlayHotkeyLabel()
+        {
+            return FormatShortcutLabel(
+                _prefs.PauseOverlayHotkeyModifiers,
+                _prefs.PauseOverlayHotkeyKey);
         }
 
         /// <summary>
@@ -2553,10 +2569,30 @@ namespace KeyClickOverlay
                 Margin = new Thickness(0, -1, 0, 0)
             };
 
-            var presetSwitchShortcutText = new TextBlock { Text = "Ctrl+Space" };
-            var presetSwitchToggleShortcutText = new TextBlock { Text = "Ctrl+Alt+Shift+F12" };
-            var clearOverlayShortcutText = new TextBlock { Text = "Ctrl+Alt+Shift+F11" };
-            var transparentModeShortcutText = new TextBlock { Text = GetTransparentHotkeyLabel() };
+            var presetSwitchShortcutText = new TextBlock
+            {
+                Text = GetPresetSwitchHotkeyLabel()
+            };
+
+            var presetSwitchToggleShortcutText = new TextBlock
+            {
+                Text = GetPresetSwitchToggleHotkeyLabel()
+            };
+
+            var clearOverlayShortcutText = new TextBlock
+            {
+                Text = GetClearOverlayHotkeyLabel()
+            };
+
+            var pauseOverlayShortcutText = new TextBlock
+            {
+                Text = GetPauseOverlayHotkeyLabel()
+            };
+
+            var transparentModeShortcutText = new TextBlock
+            {
+                Text = GetTransparentHotkeyLabel()
+            };
 
             var changePresetSwitchHotkeyItem = new MenuItem
             {
@@ -2582,6 +2618,17 @@ namespace KeyClickOverlay
                     "Click to change this shortcut."
             };
 
+            var changePauseOverlayHotkeyItem = new MenuItem
+            {
+                Header = CreateShortcutMenuHeader(
+                    "Pause overlay shortcut",
+                    pauseOverlayShortcutText),
+
+                ToolTip =
+                    "Pauses or resumes keyboard and mouse input display.\n\n" +
+                    "Click to change this shortcut."
+            };
+
             // Existing shortcut editor moved into the submenu
             var changeHotkeyItem = new MenuItem
             {
@@ -2591,10 +2638,11 @@ namespace KeyClickOverlay
                     "Click to change this shortcut."
             };
 
+            customizeShortcutsMenu.Items.Add(changeHotkeyItem);
             customizeShortcutsMenu.Items.Add(changePresetSwitchHotkeyItem);
             customizeShortcutsMenu.Items.Add(changePresetSwitchToggleHotkeyItem);
             customizeShortcutsMenu.Items.Add(changeClearOverlayHotkeyItem);
-            customizeShortcutsMenu.Items.Add(changeHotkeyItem);
+            customizeShortcutsMenu.Items.Add(changePauseOverlayHotkeyItem);
 
             // Top-level master mouse toggle (goes above "Toggle Background")
             var toggleMouseItem = new MenuItem
@@ -2713,10 +2761,21 @@ namespace KeyClickOverlay
             };
 
             // Handler for "Set shortcut..." menu items
-            changePresetSwitchHotkeyItem.Click += (_, __) => ChangePresetSwitchHotkeyViaDialog();
-            changePresetSwitchToggleHotkeyItem.Click += (_, __) => ChangePresetSwitchToggleHotkeyViaDialog();
-            changeClearOverlayHotkeyItem.Click += (_, __) => ChangeClearOverlayHotkeyViaDialog();
-            changeHotkeyItem.Click += (_, __) => ChangeTransparentHotkeyViaDialog();
+            changeHotkeyItem.Click +=
+                (_, __) => ChangeTransparentHotkeyViaDialog();
+
+            changePresetSwitchHotkeyItem.Click +=
+                (_, __) => ChangePresetSwitchHotkeyViaDialog();
+
+            changePresetSwitchToggleHotkeyItem.Click +=
+                (_, __) => ChangePresetSwitchToggleHotkeyViaDialog();
+
+            changeClearOverlayHotkeyItem.Click +=
+                (_, __) => ChangeClearOverlayHotkeyViaDialog();
+
+            changePauseOverlayHotkeyItem.Click +=
+                (_, __) => ChangePauseOverlayHotkeyViaDialog();
+
 
             // Toggle Mouse (under the separator)
             InsertAfter(cm, toggleMouseItem, sepAfterTransparent);
@@ -2994,10 +3053,11 @@ namespace KeyClickOverlay
                 toggleMouseItem.IsChecked = _mouseEnabled; // sync the correct item explicitly
                 showBgItem.IsChecked = _backgroundEnabled; // sync background explicitly
 
+                transparentModeShortcutText.Text = GetTransparentHotkeyLabel();
                 presetSwitchShortcutText.Text = GetPresetSwitchHotkeyLabel();
                 presetSwitchToggleShortcutText.Text = GetPresetSwitchToggleHotkeyLabel();
                 clearOverlayShortcutText.Text = GetClearOverlayHotkeyLabel();
-                transparentModeShortcutText.Text = GetTransparentHotkeyLabel();
+                pauseOverlayShortcutText.Text = GetPauseOverlayHotkeyLabel();
 
                 // Show/hide background group
                 UpdateBgColorItemState(_backgroundEnabled);
@@ -6794,6 +6854,19 @@ namespace KeyClickOverlay
                 RefreshTaskbarHotkeyUiLabels);
         }
 
+        /// <summary>Open the shortcut picker for the pause/resume overlay shortcut.</summary>
+        private void ChangePauseOverlayHotkeyViaDialog()
+        {
+            ChangeShortcutViaDialog(
+                "Pause overlay shortcut",
+                GetPauseOverlayHotkeyLabel(),
+                (key, mods) =>
+                {
+                    _prefs.PauseOverlayHotkeyKey = key;
+                    _prefs.PauseOverlayHotkeyModifiers = mods;
+                });
+        }
+
         /// <summary>
         /// Generic shortcut picker dialog used by all configurable shortcuts.
         /// Requires at least one modifier key to reduce accidental global shortcut conflicts.
@@ -7061,10 +7134,10 @@ namespace KeyClickOverlay
                 return;
             }
 
-            // Ctrl+Shift+F11: pause/resume the overlay's display of mouse & keyboard input.
-            // Exact-match check prevents collision with Ctrl+Alt+Shift+F11.
-            if (GetHeldModifiersFromState() == (ModifierKeys.Control | ModifierKeys.Shift) &&
-                e.KeyCode == Keys.F11)
+            // Pause/resume the overlay's display of mouse and keyboard input.
+            // Exact modifier matching prevents shortcuts with extra modifiers from triggering it.
+            if (GetHeldModifiersFromState() == _prefs.PauseOverlayHotkeyModifiers &&
+                e.KeyCode == _prefs.PauseOverlayHotkeyKey)
             {
                 // Ignore keyboard auto-repeat while F11 remains held.
                 if (_pauseShortcutHeld)
@@ -7310,7 +7383,8 @@ namespace KeyClickOverlay
         private void GlobalHook_KeyUp(object? _, System.Windows.Forms.KeyEventArgs e)
         {
             // Finish the Pause/Play shortcut when its main key is released.
-            if (e.KeyCode == Keys.F11 && _pauseShortcutHeld)
+            if (e.KeyCode == _prefs.PauseOverlayHotkeyKey &&
+                _pauseShortcutHeld)
             {
                 _pauseShortcutHeld = false;
 
