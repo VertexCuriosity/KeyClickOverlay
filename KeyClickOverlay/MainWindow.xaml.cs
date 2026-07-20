@@ -110,6 +110,7 @@ namespace KeyClickOverlay
         private Border? _stripBackground;
         private Border? _mouseBorder;
         private const string SpaceKeyTag = "SPACE_KEY";
+        private const string PauseOverlayKeyId = "__PAUSE_OVERLAY__";
         private StackPanel? _keysOutsideContainer;
         private StackPanel? _lineHost;
         private bool _previewFontKeysActive = false;
@@ -5405,17 +5406,127 @@ namespace KeyClickOverlay
             InvalidatePillLayout();
         }
 
+        /// <summary>
+        /// Display a persistent Pause tile while overlay input display is paused.
+        /// The tile has no removal deadline, so the normal frame culler leaves it visible.
+        /// </summary>
+        private void ShowPersistentPauseKey()
+        {
+            if (_horizontalContainer == null || _keysOutsideContainer == null)
+                return;
+
+            // Do not create a second Pause tile.
+            if (_activeKeyBoxes.ContainsKey(PauseOverlayKeyId))
+                return;
+
+            double squareSize = GetSquareSize();
+            double scaleFactor = GetScaleFactor();
+
+            // Use the same icon-only key style as media and navigation keys.
+            var (pauseViewbox, pauseScale) = BuildIconOnlyKey(
+                "pause.svg",
+                squareSize,
+                scaleFactor,
+                _fontColorRgb,
+                _keyFillBrush);
+
+            string modelId = PauseOverlayKeyId;
+
+            // Measure the tile at its normal pressed scale.
+            double units = MeasureUnitsOffTree(pauseViewbox);
+
+            // Register its width before adding it to the layout model.
+            _keyUnitsAtPressed[modelId] = units;
+
+            var host = new Border
+            {
+                // Reserve enough room for the later pop/pulse scale.
+                Width = units * KeyReleasePopScale,
+                Height = double.NaN,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                ClipToBounds = false,
+                Padding = new Thickness(0),
+                Margin = new Thickness(0),
+                Opacity = 0.0,
+                Child = pauseViewbox
+            };
+
+            pauseViewbox.HorizontalAlignment = HorizontalAlignment.Center;
+            pauseViewbox.VerticalAlignment = VerticalAlignment.Center;
+
+            // Respect the current Mouse-only background setting.
+            Panel targetPanel = _mouseOnlyBackground
+                ? _keysOutsideContainer
+                : _horizontalContainer;
+
+            targetPanel.Children.Add(host);
+            Panel.SetZIndex(host, 1);
+
+            // A null deadline makes this tile persistent.
+            _activeKeyBoxes[PauseOverlayKeyId] =
+                (host, pauseScale, deadlineUtc: null);
+
+            // Only keys inside the pill belong in _pillOrder.
+            if (!_mouseOnlyBackground)
+                _pillOrder.Add(modelId);
+
+            UpdatePillVisibility();
+            InvalidatePillLayout();
+
+            // Reveal only after the layout pass, matching your regular-key logic.
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                host.Opacity = 1.0;
+            }), DispatcherPriority.Render);
+        }
+
+        /// <summary>Immediately remove the persistent Pause tile.</summary>
+        private void RemovePersistentPauseKey()
+        {
+            if (!_activeKeyBoxes.TryGetValue(PauseOverlayKeyId, out var entry))
+                return;
+
+            var (host, scale, _) = entry;
+
+            // Stop any animation that may be added later.
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+
+            (host.Parent as Panel)?.Children.Remove(host);
+
+            _activeKeyBoxes.Remove(PauseOverlayKeyId);
+            _pillOrder.Remove(PauseOverlayKeyId);
+            _keyUnitsAtPressed.Remove(PauseOverlayKeyId);
+
+            SetPillWidthForOrder(_pillOrder);
+            UpdatePillVisibility();
+            InvalidatePillLayout();
+        }
+
         /// <summary>Pause or resume the overlay's display of mouse and keyboard input.</summary>
         private void SetOverlayPaused(bool paused)
         {
-            if (paused == _overlayPaused) return;
+            if (paused == _overlayPaused)
+                return;
+
             _overlayPaused = paused;
 
             if (paused)
             {
                 _scrollTimer?.Stop();
+
+                // Remove all existing input tiles before displaying the status tile.
                 ClearAllKeysFromOverlay();
-                if (_mouseEnabled) SetMouseSvg("mouse_idle.svg");
+
+                if (_mouseEnabled)
+                    SetMouseSvg("mouse_idle.svg");
+
+                ShowPersistentPauseKey();
+            }
+            else
+            {
+                RemovePersistentPauseKey();
             }
 
             ShowModernInfoAuto(
