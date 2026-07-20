@@ -112,6 +112,7 @@ namespace KeyClickOverlay
         private const string SpaceKeyTag = "SPACE_KEY";
         private const string PauseOverlayKeyId = "__PAUSE_OVERLAY__";
         private ScaleTransform? _pauseIndicatorScale;               // Scale transform currently used by the persistent Pause indicator.
+        private bool _pauseShortcutHeld = false;
         private StackPanel? _keysOutsideContainer;
         private StackPanel? _lineHost;
         private bool _previewFontKeysActive = false;
@@ -5573,6 +5574,96 @@ namespace KeyClickOverlay
             _pauseIndicatorScale = null;
         }
 
+        /// <summary>
+        /// Replace the existing Pause indicator with a pressed Play indicator.
+        /// The existing host and model entry are reused, so the Play key appears
+        /// in exactly the same position instead of being added beside Pause.
+        /// </summary>
+        private void ReplacePauseWithPressedPlayKey()
+        {
+            if (!_activeKeyBoxes.TryGetValue(PauseOverlayKeyId, out var entry))
+                return;
+
+            var (hostElement, oldScale, _) = entry;
+
+            if (hostElement is not Border host)
+                return;
+
+            // Stop the Pause pulse before replacing its visual.
+            StopPausePulse();
+
+            oldScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            oldScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+
+            double squareSize = GetSquareSize();
+            double scaleFactor = GetScaleFactor();
+
+            var (playViewbox, playScale) = BuildIconOnlyKey(
+                "play.svg",
+                squareSize,
+                scaleFactor,
+                _fontColorRgb,
+                _keyFillBrush);
+
+            playViewbox.HorizontalAlignment = HorizontalAlignment.Center;
+            playViewbox.VerticalAlignment = VerticalAlignment.Center;
+
+            // The Play icon begins in the normal held-down key state.
+            playScale.ScaleX = 1.0;
+            playScale.ScaleY = 1.0;
+
+            // Replace the Pause visual inside the existing host.
+            host.Child = playViewbox;
+            host.Opacity = 1.0;
+
+            // Keep the same persistent entry while the shortcut is held.
+            _activeKeyBoxes[PauseOverlayKeyId] =
+                (host, playScale, deadlineUtc: null);
+
+            InvalidatePillLayout();
+        }
+
+        /// <summary>
+        /// Release the pressed Play indicator using the same pop and delayed-removal
+        /// behavior as an ordinary released key.
+        /// </summary>
+        private void ReleasePlayIndicator()
+        {
+            if (!_activeKeyBoxes.TryGetValue(PauseOverlayKeyId, out var entry))
+                return;
+
+            var (host, scale, _) = entry;
+
+            var releaseAnimation = new DoubleAnimation
+            {
+                To = KeyReleasePopScale,
+                Duration = TimeSpan.FromMilliseconds(100),
+                FillBehavior = FillBehavior.HoldEnd
+            };
+
+            scale.BeginAnimation(
+                ScaleTransform.ScaleXProperty,
+                releaseAnimation,
+                HandoffBehavior.SnapshotAndReplace);
+
+            scale.BeginAnimation(
+                ScaleTransform.ScaleYProperty,
+                releaseAnimation,
+                HandoffBehavior.SnapshotAndReplace);
+
+            // Let the normal frame culler remove it after the standard key hang time.
+            _activeKeyBoxes[PauseOverlayKeyId] =
+                (
+                    host,
+                    scale,
+                    DateTime.UtcNow.AddMilliseconds(KeyHangMs)
+                );
+
+            SetPillWidthForOrder(_pillOrder);
+            UpdatePillVisibility();
+            InvalidatePillLayout();
+        }
+
         /// <summary>Immediately remove the persistent Pause tile.</summary>
         private void RemovePersistentPauseKey()
         {
@@ -6971,14 +7062,37 @@ namespace KeyClickOverlay
             }
 
             // Ctrl+Shift+F11: pause/resume the overlay's display of mouse & keyboard input.
-            // (Exact-match check, so it never fires when Alt is also held — that's Clear overlay.)
+            // Exact-match check prevents collision with Ctrl+Alt+Shift+F11.
             if (GetHeldModifiersFromState() == (ModifierKeys.Control | ModifierKeys.Shift) &&
                 e.KeyCode == Keys.F11)
             {
+                // Ignore keyboard auto-repeat while F11 remains held.
+                if (_pauseShortcutHeld)
+                    return;
+
+                _pauseShortcutHeld = true;
+
                 Dispatcher.Invoke(() =>
                 {
-                    TogglePauseOverlay();
+                    if (_overlayPaused)
+                    {
+                        // Resume immediately and replace the pulsing Pause icon
+                        // with a Play icon in its pressed state.
+                        _overlayPaused = false;
+                        ReplacePauseWithPressedPlayKey();
+
+                        ShowModernInfoAuto(
+                            "Overlay resumed",
+                            "Mouse and keyboard input display has resumed.",
+                            milliseconds: 1500,
+                            icon: DialogIcon.Info);
+                    }
+                    else
+                    {
+                        SetOverlayPaused(true);
+                    }
                 });
+
                 return;
             }
 
@@ -7195,6 +7309,25 @@ namespace KeyClickOverlay
         /// <summary>Release key tiles and manage delayed Shift-up debounce.</summary>
         private void GlobalHook_KeyUp(object? _, System.Windows.Forms.KeyEventArgs e)
         {
+            // Finish the Pause/Play shortcut when its main key is released.
+            if (e.KeyCode == Keys.F11 && _pauseShortcutHeld)
+            {
+                _pauseShortcutHeld = false;
+
+                // While paused, the visible Pause indicator must remain persistent.
+                // Only release the tile after the shortcut has resumed the overlay
+                // and changed that tile into the pressed Play indicator.
+                if (!_overlayPaused)
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        ReleasePlayIndicator();
+                    });
+                }
+
+                return;
+            }
+
             string key = IsModifierKey(e.KeyCode) ? NormalizeModifierId(e.KeyCode) : e.KeyCode.ToString();
 
             // For non-modifier keys: mark as no longer physically held.
