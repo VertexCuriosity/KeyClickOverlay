@@ -61,7 +61,8 @@ namespace KeyClickOverlay
         private bool _transparentToMouse = false;     // current transparent-to-mouse mode
         private MenuItem? _transparentMenuItem;       // "Toggle Transparent-mode" menu item
         private ThumbnailToolBarButton? _transparentThumbButton; // taskbar thumbnail button
-        private ThumbnailToolBarButton? _clearThumbButton;       // taskbar clear button
+        private ThumbnailToolBarButton? _clearThumbButton;       // taskbar clear button        
+        private bool _overlayPaused = false;          // pause KeyClickOverlay
         private bool _mouseInitialized = false;
         private bool _mouseEnabled = true;            // master switch for mouse visibility + input
         private bool _syncingMenu = false;            // suppress menu handlers while syncing IsChecked
@@ -5404,6 +5405,31 @@ namespace KeyClickOverlay
             InvalidatePillLayout();
         }
 
+        /// <summary>Pause or resume the overlay's display of mouse and keyboard input.</summary>
+        private void SetOverlayPaused(bool paused)
+        {
+            if (paused == _overlayPaused) return;
+            _overlayPaused = paused;
+
+            if (paused)
+            {
+                _scrollTimer?.Stop();
+                ClearAllKeysFromOverlay();
+                if (_mouseEnabled) SetMouseSvg("mouse_idle.svg");
+            }
+
+            ShowModernInfoAuto(
+                paused ? "Overlay paused" : "Overlay resumed",
+                paused
+                    ? "Mouse and keyboard input will no longer be displayed."
+                    : "Mouse and keyboard input display has resumed.",
+                milliseconds: 1500,
+                icon: DialogIcon.Info);
+        }
+
+        /// <summary>Toggle paused/resumed state for overlay input display (Ctrl+Shift+F11).</summary>
+        private void TogglePauseOverlay() => SetOverlayPaused(!_overlayPaused);
+
         /// <summary>Queue one full layout recompute on the dispatcher (coalesced to once per frame).</summary>
         private void QueueFullRelayout()
         {
@@ -6661,7 +6687,11 @@ namespace KeyClickOverlay
         /// <summary>Show mouse-down state/icon and update Numpad/Shift guard if needed.</summary>
         private void GlobalHook_MouseDown(object? _, System.Windows.Forms.MouseEventArgs e)
         {
-            if (!_mouseEnabled) return;
+            if (!_mouseEnabled || _overlayPaused)
+            {
+                return;
+            }
+
             string image = e.Button switch
             {
                 System.Windows.Forms.MouseButtons.Left => "mouse_leftclick.svg",
@@ -6681,23 +6711,29 @@ namespace KeyClickOverlay
         {
             if (!_mouseEnabled) return;
 
-            // --- NEW: handle RMB globally (for mapped buttons like tablet/keypad) ---
+            // Handle RMB globally (for mapped buttons like tablet/keypad)
             if (e.Button == System.Windows.Forms.MouseButtons.Right)
             {
-                Dispatcher.BeginInvoke(() =>
+                _ = Dispatcher.BeginInvoke(() =>
                 {
                     OpenGlobalContextMenuFromCurrentPointer();
                 }, DispatcherPriority.Input);
             }
 
-            // Existing behavior
+            // While paused, keep the right-click menu working but don't touch the mouse visual.
+            if (_overlayPaused) return;
+
             SetMouseSvg("mouse_idle.svg");
         }
 
         /// <summary>Show scroll state/icon briefly, then revert to idle.</summary>
         private void GlobalHook_MouseWheel(object? _, System.Windows.Forms.MouseEventArgs e)
         {
-            if (!_mouseEnabled) return;
+            if (!_mouseEnabled || _overlayPaused)
+            {
+                return;
+            }
+
             SetMouseSvg(e.Delta > 0 ? "mouse_scrollup.svg" : "mouse_scrolldown.svg");
             _scrollTimer?.Stop();
             _scrollTimer?.Start();
@@ -6717,18 +6753,33 @@ namespace KeyClickOverlay
                 return;
             }
 
-            // Ctrl+Alt+Shift+F12: enable/disable Ctrl+Space preset switching.
-            // This is a hidden meta-control shortcut, so it is handled before key drawing.
-            if (GetHeldModifiersFromState() == _prefs.PresetSwitchToggleHotkeyModifiers &&
-                e.KeyCode == _prefs.PresetSwitchToggleHotkeyKey)
+            // Ctrl+Alt+Shift+F11: clear all currently drawn overlay keys/buttons.
+            // This is a hidden overlay-maintenance shortcut, so it is handled before key drawing.
+            if (GetHeldModifiersFromState() == _prefs.ClearOverlayHotkeyModifiers &&
+                e.KeyCode == _prefs.ClearOverlayHotkeyKey)
             {
                 Dispatcher.Invoke(() =>
                 {
                     ClearAllKeysFromOverlay();
-                    TogglePresetToggleHotkeyEnabled();
                 });
                 return;
             }
+
+            // Ctrl+Shift+F11: pause/resume the overlay's display of mouse & keyboard input.
+            // (Exact-match check, so it never fires when Alt is also held — that's Clear overlay.)
+            if (GetHeldModifiersFromState() == (ModifierKeys.Control | ModifierKeys.Shift) &&
+                e.KeyCode == Keys.F11)
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    TogglePauseOverlay();
+                });
+                return;
+            }
+
+            // Track physical key-down using the raw key code; ignore auto-repeat while held
+            if (!_downKeys.Add(e.KeyCode))
+                return;
 
             // Ctrl+Alt+Shift+F11: clear all currently drawn overlay keys/buttons.
             // This is a hidden overlay-maintenance shortcut, so it is handled before key drawing.
