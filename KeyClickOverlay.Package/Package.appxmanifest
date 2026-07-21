@@ -8,13 +8,13 @@
   IgnorableNamespaces="uap desktop rescap">
 
 	<Identity
-    Name="c77c2dbf-a823-4daa-96f9-53d1d565ee2c"
-    Publisher="CN=Suus"
-    Version="1.1.65.0" />
+    Name="VertexCuriosity.KeyClickOverlay"
+    Publisher="CN=5B942730-6804-4802-A866-F16A11F61292"
+    Version="1.0.0.0" />
 
   <Properties>
     <DisplayName>KeyClickOverlay</DisplayName>
-    <PublisherDisplayName>Suus</PublisherDisplayName>
+    <PublisherDisplayName>VertexCuriosity</PublisherDisplayName>
     <Logo>Images\StoreLogo.png</Logo>
   </Properties>
 
@@ -37,7 +37,7 @@
 				BackgroundColor="transparent"
 				Square150x150Logo="Images\Square150x150Logo.png"
 				Square44x44Logo="Images\Square44x44Logo.png">
-				<uap:DefaultTile Wide310x150Logo="Images\Wide310x150Logo.png" />
+				<uap:DefaultTile Wide310x150Logo="Images\Wide310x150Logo.png"  Square71x71Logo="Images\SmallTile.png" Square310x310Logo="Images\LargeTile.png"/>
 				<uap:SplashScreen Image="Images\SplashScreen.png" />
 			</uap:VisualElements>
 
