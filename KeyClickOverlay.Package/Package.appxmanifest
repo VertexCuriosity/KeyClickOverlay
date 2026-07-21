@@ -8,9 +8,9 @@
   IgnorableNamespaces="uap desktop rescap">
 
 	<Identity
-    Name="c77c2dbf-a823-4daa-96f9-53d1d565ee2c"
-    Publisher="CN=Suus"
-    Version="1.0.00.0" />
+    Name="VertexCuriosity.KeyClickOverlay"
+    Publisher="CN=5B942730-6804-4802-A866-F16A11F61292"
+    Version="1.0.1.0" />
 
   <Properties>
     <DisplayName>KeyClickOverlay</DisplayName>
