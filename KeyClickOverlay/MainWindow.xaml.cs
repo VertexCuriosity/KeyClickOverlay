@@ -6923,7 +6923,7 @@ namespace KeyClickOverlay
             var dlg = new Window
             {
                 Owner = this,
-                WindowStartupLocation = WindowStartupLocation.Manual,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
                 ShowInTaskbar = false,
                 ResizeMode = ResizeMode.NoResize,
                 SizeToContent = SizeToContent.WidthAndHeight,
@@ -6988,7 +6988,6 @@ namespace KeyClickOverlay
 
             dlg.Loaded += (_, __) =>
             {
-                PositionDialogAtCursor(dlg, root, this);
                 dlg.Activate();
             };
 
