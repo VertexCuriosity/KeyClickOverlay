@@ -30,3 +30,6 @@ BundleArtifacts/
 *.msixbundle
 *.msixupload
 *.appxsym
+
+# Windows thumbnails
+Thumbs.db
