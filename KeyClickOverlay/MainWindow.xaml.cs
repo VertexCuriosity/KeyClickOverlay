@@ -2520,6 +2520,18 @@ namespace KeyClickOverlay
             // Remember it so we can update the tooltip text when the shortcut for the mode gets changed
             _transparentMenuItem = transparentItem;
 
+            // Pause overlay input display
+            var pauseOverlayItem = new MenuItem
+            {
+                Header = "Pause KeyClickOverlay",
+                IsCheckable = true,
+                IsChecked = _overlayPaused,
+                ToolTip =
+                    $"Pause or resume the display of keyboard and mouse input. " +
+                    $"You can also use {GetPauseOverlayHotkeyLabel()}.",
+                StaysOpenOnClick = true
+            };
+
             // Submenu for changing application shortcuts
             var customizeShortcutsMenu = new MenuItem
             {
@@ -2724,9 +2736,12 @@ namespace KeyClickOverlay
             // Transparent-mode
             cm.Items.Add(transparentItem);
 
-            // Separator under the transparent-mode row
+            // Pause KeyClickOverlay directly below Transparent-mode
+            InsertAfter(cm, pauseOverlayItem, transparentItem);
+
+            // Separator under the Pause row
             var sepAfterTransparent = new Separator();
-            InsertAfter(cm, sepAfterTransparent, transparentItem);
+            InsertAfter(cm, sepAfterTransparent, pauseOverlayItem);
 
             // Handler for Ctrl+Space preset-toggle shortcut
             presetToggleHotkeyItem.Checked += (_, __) =>
@@ -2758,6 +2773,31 @@ namespace KeyClickOverlay
             {
                 if (_syncingMenu) return;
                 SetTransparentMode(false, withPrompt: false);
+            };
+
+            // Handlers for Pause KeyClickOverlay
+            pauseOverlayItem.Checked += (_, __) =>
+            {
+                if (_syncingMenu) return;
+
+                SetOverlayPaused(true);
+
+                // Make sure the menu reflects the actual resulting state.
+                _syncingMenu = true;
+                pauseOverlayItem.IsChecked = _overlayPaused;
+                _syncingMenu = false;
+            };
+
+            pauseOverlayItem.Unchecked += (_, __) =>
+            {
+                if (_syncingMenu) return;
+
+                SetOverlayPaused(false);
+
+                // Make sure the menu reflects the actual resulting state.
+                _syncingMenu = true;
+                pauseOverlayItem.IsChecked = _overlayPaused;
+                _syncingMenu = false;
             };
 
             // Handler for "Set shortcut..." menu items
@@ -3050,6 +3090,7 @@ namespace KeyClickOverlay
                 RebuildPresetList();
                 presetToggleHotkeyItem.IsChecked = _prefs.PresetToggleHotkeyEnabled;
                 transparentItem.IsChecked = _transparentToMouse;
+                pauseOverlayItem.IsChecked = _overlayPaused;
                 toggleMouseItem.IsChecked = _mouseEnabled; // sync the correct item explicitly
                 showBgItem.IsChecked = _backgroundEnabled; // sync background explicitly
 
@@ -3058,6 +3099,10 @@ namespace KeyClickOverlay
                 presetSwitchToggleShortcutText.Text = GetPresetSwitchToggleHotkeyLabel();
                 clearOverlayShortcutText.Text = GetClearOverlayHotkeyLabel();
                 pauseOverlayShortcutText.Text = GetPauseOverlayHotkeyLabel();
+
+                pauseOverlayItem.ToolTip =
+                    $"Pause or resume the display of keyboard and mouse input. " +
+                    $"You can also use {GetPauseOverlayHotkeyLabel()}.";
 
                 // Show/hide background group
                 UpdateBgColorItemState(_backgroundEnabled);
@@ -5600,7 +5645,7 @@ namespace KeyClickOverlay
             // Rest at the pressed size
             pulseX.KeyFrames.Add(new DiscreteDoubleKeyFrame(
                 1.0,
-                KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(3800))));
+                KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(3200))));
 
             var pulseY = pulseX.Clone();
 
@@ -6858,7 +6903,7 @@ namespace KeyClickOverlay
         private void ChangePauseOverlayHotkeyViaDialog()
         {
             ChangeShortcutViaDialog(
-                "Pause overlay shortcut",
+                "Pause KeyClickOverlay shortcut",
                 GetPauseOverlayHotkeyLabel(),
                 (key, mods) =>
                 {
