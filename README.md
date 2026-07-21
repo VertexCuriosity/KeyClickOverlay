@@ -17,7 +17,7 @@ If you prefer a portable version, you can also download the latest portable rele
 ## Requirements
 
 - Windows 11 (64-bit)
-- Windows 10 has not been tested.
+- Windows 10 compatibility has not been verified.
 
 ## Highlights
 
