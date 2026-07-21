@@ -20,9 +20,10 @@
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<LangVersion>12.0</LangVersion>
-
-		<ApplicationIcon>KeyClickOverlay.ico</ApplicationIcon>
 		<!-- This sets the app icon -->
+		<ApplicationIcon>KeyClickOverlay.ico</ApplicationIcon>
+		<ApplicationManifest>app.manifest</ApplicationManifest>
+
 		<EnableLibraryImportGenerator>true</EnableLibraryImportGenerator>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 

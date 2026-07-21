@@ -59,7 +59,7 @@
     <EntryPointProjectUniqueName>..\KeyClickOverlay\KeyClickOverlay.csproj</EntryPointProjectUniqueName>
     <PackageCertificateKeyFile>KeyClickOverlay.Package_TemporaryKey.pfx</PackageCertificateKeyFile>
     <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
-    <AppxAutoIncrementPackageRevision>True</AppxAutoIncrementPackageRevision>
+    <AppxAutoIncrementPackageRevision>False</AppxAutoIncrementPackageRevision>
     <AppxBundlePlatforms>x64</AppxBundlePlatforms>
     <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
     <GenerateTestArtifacts>True</GenerateTestArtifacts>
