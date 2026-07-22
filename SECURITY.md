@@ -1,6 +1,6 @@
 # Security Policy
 
-The security of ReorderFlow and its users is taken seriously.
+The security of KeyClickOverlay and its users is taken seriously.
 
 If you believe you have discovered a security vulnerability, please report it responsibly so it can be investigated and, if confirmed, resolved before it is publicly disclosed.
 
