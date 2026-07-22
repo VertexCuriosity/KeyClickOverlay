@@ -2,7 +2,7 @@
 
 The security of KeyClickOverlay and its users is taken seriously.
 
-If you believe you have discovered a security vulnerability, please report it responsibly so it can be investigated and, if confirmed, resolved before it is publicly disclosed.
+Responsible disclosure helps protect users while allowing sufficient time to investigate and resolve confirmed vulnerabilities before they are made public.
 
 <br>
 
@@ -29,7 +29,7 @@ Please include:
 
 I will acknowledge receipt of your report as soon as reasonably possible and investigate the issue.
 
-If the vulnerability is confirmed, I will work to resolve it or, where appropriate, coordinate with the maintainers of any affected third-party software.
+If the vulnerability is confirmed, I will work to resolve it as quickly as reasonably possible. If the issue originates from a third-party dependency, I will coordinate with the maintainers of the affected project where appropriate.
 
 ## Scope
 
