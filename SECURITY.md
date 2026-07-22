@@ -1,12 +1,16 @@
 # Security Policy
 
+The security of ReorderFlow and its users is taken seriously.
+
+If you believe you have discovered a security vulnerability, please report it responsibly so it can be investigated and, if confirmed, resolved before it is publicly disclosed.
+
+<br>
+
 ## Supported Versions
 
 Security updates are provided for the latest released version of KeyClickOverlay.
 
 If you discover a security issue in an older version, please verify whether the issue is still present in the latest release before reporting it.
-
----
 
 ## Reporting a Vulnerability
 
@@ -26,8 +30,6 @@ Please include:
 I will acknowledge receipt of your report as soon as reasonably possible and investigate the issue.
 
 If the vulnerability is confirmed, I will work to resolve it or, where appropriate, coordinate with the maintainers of any affected third-party software.
-
----
 
 ## Scope
 
