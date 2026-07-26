@@ -48,7 +48,7 @@ If you prefer a portable version, you can also download the latest portable rele
 
 ## Documentation
 
-The complete documentation is available on the **[VertexCuriosity website](https://vertexcuriosity.com/dev/addons-and-apps/apps/keyclickoverlay)**.
+The complete documentation is available on the **[VertexCuriosity website](https://vertexcuriosity.com/addons-and-apps/apps/keyclickoverlay)**.
 
 Topics include:
 
