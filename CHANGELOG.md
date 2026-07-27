@@ -6,7 +6,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 <br>
 
-## [1.0.0] - YYYY-MM-DD
+## [1.0.0] - 2026-07-17
 
 ### Added
 
