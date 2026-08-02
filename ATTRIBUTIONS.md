@@ -17,9 +17,9 @@ https://ui.blender.org/icons
 
 Some icons have been modified for use in this project.
 
-The Blender Foundation has been contacted to confirm the official license and recommended attribution for these icons.
+The icons are licensed under the GNU General Public License v2.0 or later (GPL-2.0-or-later). This project includes the attribution recommended by the Blender Foundation.
 
-License file:
+License and attribution:
 
 [`Blender-Icons.txt`](third_party_licenses/Blender-Icons.txt)
 
