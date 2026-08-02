@@ -1,14 +1,17 @@
-Blender icon license placeholder
-================================
+Blender Icons License
+=====================
 
-This file is intentionally left as a placeholder.
-
-KeyClickOverlay redistributes and modifies SVG icons downloaded from:
+Source:
 https://ui.blender.org/icons
 
-The Blender Foundation has been contacted to confirm the official
-license and recommended attribution for these icons.
+License:
+GNU General Public License v2.0 or later (GPL-2.0-or-later)
 
-Once confirmation has been received, this file will be replaced with
-the original license text or the officially recommended licensing
-information.
+Attribution:
+
+KeyClickOverlay includes icons derived from the Blender project
+(https://www.blender.org), © Blender Foundation and contributors,
+licensed under the GNU General Public License v2.0 or later.
+
+For more information about Blender's licensing, see:
+https://www.blender.org/support/faq/#license-5
