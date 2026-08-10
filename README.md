@@ -10,9 +10,7 @@ Freely position the overlay anywhere on screen, resize it precisely, create mult
 
 ## Installation
 
-Install KeyClickOverlay from the **[Microsoft Store](https://apps.microsoft.com/detail/xxxxxxxxxxxx)**.
-
-If you prefer a portable version, you can also download the latest portable release from the **[Releases](../../releases)** page.
+Install KeyClickOverlay from the **[Microsoft Store](https://apps.microsoft.com/detail/9ntfch58xzzs?hl=en-US&gl=NL)**.
 
 ## Requirements
 
