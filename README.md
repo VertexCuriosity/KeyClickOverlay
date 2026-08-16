@@ -67,8 +67,6 @@ Contributions are welcome!
 
 If you encounter a bug, have a feature request, or would like to contribute code, please open an issue or read the [Contributing Guidelines](CONTRIBUTING.md).
 
-If you enjoy using KeyClickOverlay, starring the repository is greatly appreciated!
-
 ## License
 
 KeyClickOverlay is licensed under the GPL-3.0-or-later.
