@@ -42,7 +42,7 @@ Install KeyClickOverlay from the **[Microsoft Store](https://apps.microsoft.com/
 
 ## Preview
 
-*Screenshots and an animated demonstration will be added soon.*
+*Screenshots will be added soon.*
 
 ## Documentation
 
