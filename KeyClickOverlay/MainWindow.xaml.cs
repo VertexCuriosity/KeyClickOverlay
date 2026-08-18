@@ -24,6 +24,7 @@ using Icon = System.Drawing.Icon;
 using IOPath = System.IO.Path;
 using Keys = System.Windows.Forms.Keys;
 using MouseButtons = System.Windows.Forms.MouseButtons;
+using Microsoft.Win32;
 using WinForms = System.Windows.Forms;
 
 
@@ -1174,6 +1175,11 @@ namespace KeyClickOverlay
         {
             // ---------- Load persisted prefs + verify assets ----------
             InitializeComponent();
+            
+            SystemEvents.UserPreferenceChanged +=
+                SystemEvents_UserPreferenceChanged;
+
+            Closed += MainWindow_Closed;
 
             // Minimum working size for overlay (prevents unusably tiny windows)
             this.MinWidth = 80;  // pick what feels right for your UI
@@ -1224,6 +1230,7 @@ namespace KeyClickOverlay
             MainGrid.MouseLeave += (_, __) => { _isMouseOverWindow = false; UpdateChromeButtons(); };
 
             SetupOverlayUI();               // Build overlay UI (containers, chrome, one-time visuals)
+            UpdateWindowChromeTheme();      // Apply current Windows light/dark chrome
             SetupHooks();                   // Global input hooks (mouse + keyboard)
 
             // Keep the current target (main window or dialog) above taskbar/other topmost windows.
@@ -1350,6 +1357,24 @@ namespace KeyClickOverlay
                 if (_pendingModUps.Count == 0 && _pendingRegularUps.Count == 0 && !GuardActive())
                     _keyStateWatch.Stop();
             };
+        }
+
+        private void SystemEvents_UserPreferenceChanged(
+            object sender,
+            UserPreferenceChangedEventArgs e)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                UpdateWindowChromeTheme();
+            });
+        }
+
+        private void MainWindow_Closed(
+            object? sender,
+            EventArgs e)
+        {
+            SystemEvents.UserPreferenceChanged -=
+                SystemEvents_UserPreferenceChanged;
         }
 
         /// <summary>Finalize window initialization once loaded (e.g., taskbar toolbar).</summary>
@@ -4813,6 +4838,23 @@ namespace KeyClickOverlay
                 RoundedVisualFrame.Padding = new Thickness(FrameTotalInset - FrameStroke); // 1 + 1 = 2
                 RoundedVisualFrame.BorderBrush = BuildWin11WindowOutline();
             }
+        }
+
+        private void UpdateWindowChromeTheme()
+        {
+            bool light = IsWindowsAppLightTheme();
+
+            // Keep the existing theme-aware window outline.
+            UpdateWindowBorderChrome();
+
+            Resources["ChromeButtonForegroundBrush"] =
+                SolidBrush(light ? "#505050" : "#B0B0B0");
+
+            Resources["ChromeButtonHoverBrush"] =
+                SolidBrush(light ? "#1A000000" : "#1AFFFFFF");
+
+            Resources["ChromeButtonPressedBrush"] =
+                SolidBrush(light ? "#33000000" : "#33FFFFFF");
         }
 
         /// <summary>Check the system’s AppsUseLightTheme registry flag.</summary>

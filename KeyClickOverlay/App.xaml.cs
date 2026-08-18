@@ -1,11 +1,10 @@
-﻿using ModernWpf;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Windows;
 
 namespace KeyClickOverlay
 {
     /// <summary>
-    /// WPF application bootstrap: command line handling, theme wiring, and remote toggle.
+    /// WPF application bootstrap: command line handling and remote toggle.
     /// </summary>
     public partial class App : Application
     {
@@ -15,20 +14,20 @@ namespace KeyClickOverlay
 
         // === App Startup ===
 
-        /// <summary>Handles command-line args and wires theme before creating MainWindow.</summary>
+        /// <summary>Handles command-line args before creating MainWindow.</summary>
         protected override void OnStartup(StartupEventArgs e)
         {
             // Remote toggle path: signal existing window and exit early.
-            if (e.Args.Length > 0 && string.Equals(e.Args[0], ToggleArg, StringComparison.OrdinalIgnoreCase))
+            if (e.Args.Length > 0 &&
+                string.Equals(
+                    e.Args[0],
+                    ToggleArg,
+                    StringComparison.OrdinalIgnoreCase))
             {
                 ToggleClickThroughExistingWindow();
                 Shutdown();
                 return;
             }
-
-            // Follow OS Light/Dark + Accent (null => follow system).
-            ThemeManager.Current.ApplicationTheme = null;
-            ThemeManager.Current.AccentColor = null;
 
             base.OnStartup(e); // Let WPF create MainWindow from App.xaml
         }
@@ -45,11 +44,19 @@ namespace KeyClickOverlay
             {
                 // Skip if it has no main window (e.g., this helper instance).
                 IntPtr hwnd = proc.MainWindowHandle;
+
                 if (hwnd == IntPtr.Zero)
+                {
                     continue;
+                }
 
                 // Post the custom message and stop after the first valid window.
-                _ = NativeMethods.PostMessage(hwnd, WM_TOGGLE_CLICKTHROUGH, IntPtr.Zero, IntPtr.Zero);
+                _ = NativeMethods.PostMessage(
+                    hwnd,
+                    WM_TOGGLE_CLICKTHROUGH,
+                    IntPtr.Zero,
+                    IntPtr.Zero);
+
                 break;
             }
         }
