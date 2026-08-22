@@ -24,7 +24,6 @@ using Icon = System.Drawing.Icon;
 using IOPath = System.IO.Path;
 using Keys = System.Windows.Forms.Keys;
 using MouseButtons = System.Windows.Forms.MouseButtons;
-using Microsoft.Win32;
 using WinForms = System.Windows.Forms;
 
 
@@ -1175,9 +1174,9 @@ namespace KeyClickOverlay
         {
             // ---------- Load persisted prefs + verify assets ----------
             InitializeComponent();
-            
-            SystemEvents.UserPreferenceChanged +=
-                SystemEvents_UserPreferenceChanged;
+
+            AppTheme.Changed += AppTheme_Changed;
+            AppTheme.Start();
 
             Closed += MainWindow_Closed;
 
@@ -1359,22 +1358,22 @@ namespace KeyClickOverlay
             };
         }
 
-        private void SystemEvents_UserPreferenceChanged(
-            object sender,
-            UserPreferenceChangedEventArgs e)
+        private void AppTheme_Changed(object? sender, EventArgs e)
         {
-            Dispatcher.Invoke(() =>
+            UpdateWindowChromeTheme();
+
+            if (_globalContextMenu != null)
             {
-                UpdateWindowChromeTheme();
-            });
+                ApplyWin11ContextMenuStyle(_globalContextMenu);
+            }
         }
 
         private void MainWindow_Closed(
             object? sender,
             EventArgs e)
         {
-            SystemEvents.UserPreferenceChanged -=
-                SystemEvents_UserPreferenceChanged;
+            AppTheme.Changed -= AppTheme_Changed;
+            AppTheme.Stop();
         }
 
         /// <summary>Finalize window initialization once loaded (e.g., taskbar toolbar).</summary>
@@ -3298,11 +3297,22 @@ namespace KeyClickOverlay
             cm.SetValue(ThemeManager.IsThemeAwareProperty, true);
 
             // Theme brushes (light/dark)
-            bool light = IsWindowsAppLightTheme();
-            var bg = SolidBrush(light ? "#F9F9F9" : "#2B2B2B"); bg.Opacity = 0.96;
-            var fg = SolidBrush(light ? "#111111" : "#EEEEEE"); if (fg.CanFreeze) fg.Freeze();
-            var hoverBg = SolidBrush(light ? "#EDEDED" : "#3A3A3A"); if (hoverBg.CanFreeze) hoverBg.Freeze();
-            var outline = SolidBrush(light ? "#1A000000" : "#26FFFFFF"); if (outline.CanFreeze) outline.Freeze();
+            var bg = new SolidColorBrush(AppTheme.MenuBackgroundColor)
+            {
+                Opacity = 0.96
+            };
+
+            var fg = new SolidColorBrush(AppTheme.MenuForegroundColor);
+            if (fg.CanFreeze)
+                fg.Freeze();
+
+            var hoverBg = new SolidColorBrush(AppTheme.MenuHoverColor);
+            if (hoverBg.CanFreeze)
+                hoverBg.Freeze();
+
+            var outline = new SolidColorBrush(AppTheme.WindowOutlineColor);
+            if (outline.CanFreeze)
+                outline.Freeze();
 
             // Context menu root (rounded border + shadow + padding)
             var root = new FrameworkElementFactory(typeof(Border));
@@ -4813,10 +4823,11 @@ namespace KeyClickOverlay
         /// <summary>Create a SolidColorBrush from a hex string; returned brush is mutable (not frozen).</summary>
         private static SolidColorBrush BuildWin11WindowOutline()
         {
-            // Same alpha values you use for the context menu outline:
-            bool light = IsWindowsAppLightTheme();
-            var brush = SolidBrush(light ? "#1A000000" : "#26FFFFFF"); //Light : dark
-            if (brush.CanFreeze) brush.Freeze();
+            var brush = new SolidColorBrush(AppTheme.WindowOutlineColor);
+
+            if (brush.CanFreeze)
+                brush.Freeze();
+
             return brush;
         }
 
@@ -4842,33 +4853,16 @@ namespace KeyClickOverlay
 
         private void UpdateWindowChromeTheme()
         {
-            bool light = IsWindowsAppLightTheme();
-
-            // Keep the existing theme-aware window outline.
             UpdateWindowBorderChrome();
 
             Resources["ChromeButtonForegroundBrush"] =
-                SolidBrush(light ? "#505050" : "#B0B0B0");
+                new SolidColorBrush(AppTheme.ChromeButtonForegroundColor);
 
             Resources["ChromeButtonHoverBrush"] =
-                SolidBrush(light ? "#1A000000" : "#1AFFFFFF");
+                new SolidColorBrush(AppTheme.ChromeButtonHoverColor);
 
             Resources["ChromeButtonPressedBrush"] =
-                SolidBrush(light ? "#33000000" : "#33FFFFFF");
-        }
-
-        /// <summary>Check the system’s AppsUseLightTheme registry flag.</summary>
-        private static bool IsWindowsAppLightTheme()
-        {
-            try
-            {
-                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-                        @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-                var value = key?.GetValue("AppsUseLightTheme");
-                if (value is int i) return i != 0;
-            }
-            catch { /* ignore */ }
-            return true; // Default to light if unknown
+                new SolidColorBrush(AppTheme.ChromeButtonPressedColor);
         }
 
         /// <summary>Try binding a property to the first resource key that exists (theme-aware).</summary>
