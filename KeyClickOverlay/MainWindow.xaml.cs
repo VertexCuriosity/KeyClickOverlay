@@ -3570,7 +3570,6 @@ namespace KeyClickOverlay
 
             // Context menu number boxes
             public const double FactorInputWidth = 64.0;
-            public const double GeometryInputWidth = 86.0;
             public const double GeometryLabelGap = 18.0;
             public const double RowRightInset = 10.0;
             public const double NumericInputHeight = 30.0;
@@ -3592,7 +3591,7 @@ namespace KeyClickOverlay
             double minimum,
             double maximum,
             double step,
-            double width,
+            double? width,
             string numberFormat,
             Action<double>? onValueCommitted = null,
             bool stretchToFill = false)
@@ -3600,7 +3599,11 @@ namespace KeyClickOverlay
 
             var border = new Border
             {
-                Width = stretchToFill ? double.NaN : width + MenuUI.NumericInputRightInset,
+                Width = stretchToFill
+                    ? double.NaN
+                    : (width ?? throw new ArgumentNullException(nameof(width)))
+                        + MenuUI.NumericInputRightInset,
+
                 Height = MenuUI.NumericInputHeight,
                 CornerRadius = new CornerRadius(MenuUI.NumericInputCornerRadius),
                 BorderThickness = new Thickness(1),
@@ -4142,7 +4145,7 @@ namespace KeyClickOverlay
                 minimum: Math.Max(1, MinWidth),
                 maximum: 10000,
                 step: 1,
-                width: MenuUI.GeometryInputWidth,
+                width: null,
                 numberFormat: "0",
                 stretchToFill: true,
                 onValueCommitted: value =>
@@ -4162,7 +4165,7 @@ namespace KeyClickOverlay
                 minimum: Math.Max(1, MinHeight),
                 maximum: 10000,
                 step: 1,
-                width: MenuUI.GeometryInputWidth,
+                width: null,
                 numberFormat: "0",
                 stretchToFill: true,
                 onValueCommitted: value =>
@@ -4334,7 +4337,7 @@ namespace KeyClickOverlay
                 minimum: -100000,
                 maximum: 100000,
                 step: 1,
-                width: MenuUI.GeometryInputWidth,
+                width: null,
                 numberFormat: "0",
                 stretchToFill: true,
                 onValueCommitted: value =>
@@ -4354,7 +4357,7 @@ namespace KeyClickOverlay
                 minimum: -100000,
                 maximum: 100000,
                 step: 1,
-                width: MenuUI.GeometryInputWidth,
+                width: null,
                 numberFormat: "0",
                 stretchToFill: true,
                 onValueCommitted: value =>
