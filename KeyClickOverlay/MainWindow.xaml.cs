@@ -1688,6 +1688,7 @@ namespace KeyClickOverlay
             // ---------- Context menu: Save preset submenu ------------------------------------------------
 
             var cm = _globalContextMenu ??= new ContextMenu();
+            Grid.SetIsSharedSizeScope(cm, true);
 
             cm.Opened += (_, __) =>
             {
@@ -3566,15 +3567,312 @@ namespace KeyClickOverlay
             // Icon defaults
             public const double IconSize = 16.0;
             public const double SubmenuArrowSize = 12.0;
+
+            // Context menu number boxes
+            public const double FactorInputWidth = 64.0;
+            public const double GeometryInputWidth = 86.0;
+            public const double GeometryLabelGap = 18.0;
+            public const double RowRightInset = 10.0;
+            public const double NumericInputHeight = 30.0;
+            public const double NumericClearButtonWidth = 20.0;
+            public const double NumericInputCornerRadius = 6.0;
+            public const double NumericInputRightInset = 4.0;
         }
 
-        /// <summary>Build a (label + slider + number box) menu row with safe two-way sync.</summary>
-        private (MenuItem item, Slider slider, ModernWpf.Controls.NumberBox box, Action Sync) CreateFactorRow(
+        /// <summary>Create a compact, theme-aware numeric text input for the context menu.</summary>
+        private (
+            Border Root,
+            TextBox TextBox,
+            Button ClearButton,
+            Action<double> SetValue,
+            Func<double?> GetValue,
+            Action ApplyTheme)
+        CreateNumericInput(
+            double initialValue,
+            double minimum,
+            double maximum,
+            double step,
+            double width,
+            string numberFormat,
+            Action<double>? onValueCommitted = null,
+            bool stretchToFill = false)
+        {
+
+            var border = new Border
+            {
+                Width = stretchToFill ? double.NaN : width + MenuUI.NumericInputRightInset,
+                Height = MenuUI.NumericInputHeight,
+                CornerRadius = new CornerRadius(MenuUI.NumericInputCornerRadius),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(0, 0, MenuUI.NumericInputRightInset, 0),
+                HorizontalAlignment = stretchToFill ? HorizontalAlignment.Stretch : HorizontalAlignment.Left,
+                SnapsToDevicePixels = true
+            };
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(
+                new ColumnDefinition { Width = new GridLength(MenuUI.NumericClearButtonWidth) });
+
+            var textBox = new TextBox
+            {
+                // Prevent ModernWpf's implicit TextBox style from being applied.
+                Style = new Style(typeof(TextBox)),
+
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(5, 0, 0, 0),
+                FontSize = MenuUI.ItemFontSize,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                FocusVisualStyle = null
+            };
+
+            Grid.SetColumn(textBox, 0);
+
+            var clearGlyph = new TextBlock
+            {
+                Text = "✕",
+                FontSize = 10,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false
+            };
+
+            var clearButton = new Button
+            {
+                // Prevent ModernWpf's implicit Button style from being applied.
+                Style = new Style(typeof(Button)),
+
+                Content = clearGlyph,
+                Width = MenuUI.NumericClearButtonWidth - 2,
+                Height = MenuUI.NumericClearButtonWidth - 2,
+                Padding = new Thickness(0),
+                Background = Brushes.Transparent,
+                BorderBrush = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Focusable = false,
+                FocusVisualStyle = null,
+                Cursor = Cursors.Hand,
+                Visibility = Visibility.Hidden
+            };
+
+            var clearTemplate = new ControlTemplate(typeof(Button));
+
+            var clearChrome = new FrameworkElementFactory(typeof(Border))
+            {
+                Name = "ClearChrome"
+            };
+            clearChrome.SetValue(
+                Border.CornerRadiusProperty,
+                new CornerRadius(4));
+            clearChrome.SetValue(
+                Border.BackgroundProperty,
+                Brushes.Transparent);
+
+            var clearContent = new FrameworkElementFactory(typeof(ContentPresenter));
+            clearContent.SetValue(
+                FrameworkElement.HorizontalAlignmentProperty,
+                HorizontalAlignment.Center);
+            clearContent.SetValue(
+                FrameworkElement.VerticalAlignmentProperty,
+                VerticalAlignment.Center);
+
+            clearChrome.AppendChild(clearContent);
+            clearTemplate.VisualTree = clearChrome;
+
+            var clearHoverBrush =
+                new SolidColorBrush(AppTheme.MenuHoverColor);
+
+            if (clearHoverBrush.CanFreeze)
+                clearHoverBrush.Freeze();
+
+            var clearHoverTrigger = new Trigger
+            {
+                Property = Button.IsMouseOverProperty,
+                Value = true
+            };
+
+            clearHoverTrigger.Setters.Add(
+                new Setter(
+                    Border.BackgroundProperty,
+                    clearHoverBrush,
+                    "ClearChrome"));
+
+            clearTemplate.Triggers.Add(clearHoverTrigger);
+            clearButton.Template = clearTemplate;
+
+            Grid.SetColumn(clearButton, 1);
+
+            grid.Children.Add(textBox);
+            grid.Children.Add(clearButton);
+            border.Child = grid;
+
+            double NormalizeValue(double value)
+            {
+                value = Math.Clamp(value, minimum, maximum);
+
+                if (step > 0)
+                    value = Math.Round(value / step) * step;
+
+                return Math.Clamp(value, minimum, maximum);
+            }
+
+            string FormatValue(double value) =>
+                value.ToString(
+                    numberFormat,
+                    System.Globalization.CultureInfo.CurrentCulture);
+
+            double lastValidValue = NormalizeValue(initialValue);
+
+            double? ReadValue()
+            {
+                if (!double.TryParse(
+                        textBox.Text,
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.CurrentCulture,
+                        out double value))
+                {
+                    return null;
+                }
+
+                return NormalizeValue(value);
+            }
+
+            void SetValue(double value)
+            {
+                value = NormalizeValue(value);
+                lastValidValue = value;
+                textBox.Text = FormatValue(value);
+            }
+
+            void RestoreLastValid()
+            {
+                textBox.Text = FormatValue(lastValidValue);
+            }
+
+            void CommitCurrentValue()
+            {
+                if (ReadValue() is double value)
+                {
+                    SetValue(value);
+                    onValueCommitted?.Invoke(value);
+                }
+                else
+                {
+                    RestoreLastValid();
+                }
+            }
+
+            bool isHovering = false;
+
+            void ApplyTheme()
+            {
+                bool focused = textBox.IsKeyboardFocusWithin;
+
+                if (AppTheme.IsLight)
+                {
+                    border.Background = focused
+                        ? SolidBrush("#FFE8E8E8")
+                        : SolidBrush("#FFFFFFFF");
+
+                    border.BorderBrush = focused
+                        ? SolidBrush("#73000000")
+                        : isHovering
+                            ? SolidBrush("#40000000")
+                            : SolidBrush("#26000000");
+
+                    textBox.Foreground = SolidBrush("#111111");
+                    textBox.CaretBrush = SolidBrush("#111111");
+                    clearGlyph.Foreground = SolidBrush("#606060");
+                }
+                else
+                {
+                    border.Background = focused
+                        ? SolidBrush("#FF202020")
+                        : SolidBrush("#FF333333");
+
+                    border.BorderBrush = focused
+                        ? SolidBrush("#90FFFFFF")
+                        : isHovering
+                            ? SolidBrush("#55FFFFFF")
+                            : SolidBrush("#30FFFFFF");
+
+                    textBox.Foreground = SolidBrush("#EEEEEE");
+                    textBox.CaretBrush = SolidBrush("#FFFFFF");
+                    clearGlyph.Foreground = SolidBrush("#BDBDBD");
+                }
+            }
+
+            textBox.GotKeyboardFocus += (_, __) =>
+            {
+                clearButton.Visibility = Visibility.Visible;
+                textBox.SelectAll();
+                ApplyTheme();
+            };
+
+            textBox.LostKeyboardFocus += (_, __) =>
+            {
+                clearButton.Visibility = Visibility.Hidden;
+                CommitCurrentValue();
+                ApplyTheme();
+            };
+
+            textBox.KeyDown += (_, e) =>
+            {
+                if (e.Key == Key.Enter)
+                {
+                    Keyboard.ClearFocus();
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.Escape)
+                {
+                    RestoreLastValid();
+                    Keyboard.ClearFocus();
+                    e.Handled = true;
+                }
+            };
+
+            clearButton.Click += (_, __) =>
+            {
+                textBox.Clear();
+                textBox.Focus();
+            };
+
+            border.MouseEnter += (_, __) =>
+            {
+                isHovering = true;
+                ApplyTheme();
+            };
+
+            border.MouseLeave += (_, __) =>
+            {
+                isHovering = false;
+                ApplyTheme();
+            };
+
+            SetValue(initialValue);
+            ApplyTheme();
+
+            return (
+                border,
+                textBox,
+                clearButton,
+                SetValue,
+                ReadValue,
+                ApplyTheme);
+        }
+
+        /// <summary>Build a (label + slider + custom numeric input) menu row with safe two-way sync.</summary>
+        private (MenuItem item, Slider slider, Border box, Action Sync) CreateFactorRow(
             string title,
             double min, double max,
             Func<double> getValue,      // Read current factor
             Action<double> setValue,    // Apply new factor
-            double step = 0.05)         // Rounding step (matches your slider tick)
+            double step = 0.05)         // Rounding step (matches slider tick)
         {
             // Minimal/no-hover template for a “host only” MenuItem
             var noHoverTemplate = new ControlTemplate(typeof(MenuItem));
@@ -3590,14 +3888,42 @@ namespace KeyClickOverlay
                 noHoverTemplate.VisualTree = border;
             }
 
-            var item = new MenuItem { StaysOpenOnClick = true, Focusable = false, Template = noHoverTemplate };
+            var item = new MenuItem
+            {
+                StaysOpenOnClick = true,
+                Focusable = false,
+                Template = noHoverTemplate
+            };
 
-            // Grid: 2 rows (title; controls) × 2 cols (slider | number box)
-            var grid = new Grid { Margin = new Thickness(8, 4, 8, 6) };
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            // Grid: 2 rows (title; controls) × 2 cols (slider | numeric input)
+            var grid = new Grid
+            {
+                Margin = new Thickness(8, 4, 8, 6)
+            };
+
+            grid.RowDefinitions.Add(
+                new RowDefinition
+                {
+                    Height = GridLength.Auto
+                });
+
+            grid.RowDefinitions.Add(
+                new RowDefinition
+                {
+                    Height = GridLength.Auto
+                });
+
+            grid.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width = new GridLength(1, GridUnitType.Star)
+                });
+
+            grid.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width = GridLength.Auto
+                });
 
             var label = new TextBlock
             {
@@ -3605,6 +3931,7 @@ namespace KeyClickOverlay
                 Margin = new Thickness(0, 0, 0, 6),
                 VerticalAlignment = VerticalAlignment.Center
             };
+
             Grid.SetRow(label, 0);
             Grid.SetColumnSpan(label, 2);
 
@@ -3616,123 +3943,123 @@ namespace KeyClickOverlay
                 TickFrequency = step,
                 IsSnapToTickEnabled = false, // Snap manually
                 Margin = new Thickness(0, 0, 8, 0),
-                Width = 180
+                Width = 170
             };
+
             Grid.SetRow(slider, 1);
             Grid.SetColumn(slider, 0);
 
-            var box = new ModernWpf.Controls.NumberBox
-            {
-                Minimum = min,
-                Maximum = max,
-                Value = getValue(),
-                SmallChange = step,
-                LargeChange = step * 2,
-                Width = 64,
-                HorizontalAlignment = HorizontalAlignment.Right
-            };
-            ModernWpf.Controls.Primitives.ControlHelper.SetCornerRadius(box, new CornerRadius(6));
+            bool updating = false;
+
+            var numericInput = CreateNumericInput(
+                initialValue: getValue(),
+                minimum: min,
+                maximum: max,
+                step: step,
+                width: MenuUI.FactorInputWidth,
+                numberFormat: "0.00",
+                onValueCommitted: value =>
+                {
+                    if (updating)
+                        return;
+
+                    updating = true;
+
+                    slider.Value = value;
+                    setValue(value);
+
+                    updating = false;
+                });
+
+            var box = numericInput.Root;
+
+            box.HorizontalAlignment = HorizontalAlignment.Right;
+            box.Margin = new Thickness(0, 0, MenuUI.RowRightInset, 0);
+
             Grid.SetRow(box, 1);
             Grid.SetColumn(box, 1);
 
             grid.Children.Add(label);
             grid.Children.Add(slider);
             grid.Children.Add(box);
+
             item.Header = grid;
 
-            // Keep slider and box in sync (and drive layout)
-            bool updating = false;
-            double lastValid = getValue();
-
-            // Slider → Box
+            // Slider → numeric input
             slider.ValueChanged += (_, args) =>
             {
-                if (updating) return;
+                if (updating)
+                    return;
+
                 updating = true;
 
-                double v = Math.Round(args.NewValue / step) * step; // Snap
-                slider.Value = v;    // Normalize slider
-                box.Value = v;       // Mirror to box
-                setValue(v);         // Apply
-                lastValid = v;
+                double value =
+                    Math.Round(args.NewValue / step) * step;
+
+                value = Math.Clamp(value, min, max);
+
+                slider.Value = value;
+                numericInput.SetValue(value);
+                setValue(value);
 
                 updating = false;
             };
 
-            // Box → Slider (ignore NaN while typing)
-            box.ValueChanged += (_, __) =>
-            {
-                if (updating) return;
-                double raw = box.Value;
-                if (double.IsNaN(raw)) return;
-
-                double v = Math.Round(Math.Clamp(raw, box.Minimum, box.Maximum) / step) * step;
-
-                updating = true;
-                box.Value = v;       // Normalize text
-                slider.Value = v;
-                setValue(v);
-                lastValid = v;
-                updating = false;
-            };
-
-            // Commit fallback if box is empty on blur/Enter
-            void Restore()
-            {
-                if (!double.IsNaN(box.Value)) return;
-                updating = true;
-                box.Value = lastValid;
-                slider.Value = lastValid;
-                setValue(lastValid);
-                updating = false;
-            }
-            box.LostFocus += (_, __) => Restore();
-            box.KeyDown += (_, e) => { if (e.Key == Key.Enter) Restore(); };
-
-            // Sync delegate to call on cm.Opened
+            // Sync delegate to call when the context menu opens
             void Sync()
             {
                 updating = true;
-                double v = getValue();
-                slider.Value = v;
-                box.Value = v;
-                lastValid = v;
+
+                double value = Math.Clamp(
+                    getValue(),
+                    min,
+                    max);
+
+                slider.Value = value;
+                numericInput.SetValue(value);
+                numericInput.ApplyTheme();
+
                 updating = false;
             }
 
             return (item, slider, box, Sync);
         }
 
-
-        /// <summary> Build a (title + Width/Height NumberBoxes) menu row that edits the window size.</summary>
+        /// <summary>Create the Window size section of the context menu.</summary>
         private (MenuItem titleItem, MenuItem editorItem, Action Sync)
         CreateWindowSizeRow(string title, string svgPath)
         {
-            // ---------- Row 1: normal menu item ----------
             var titleItem = new MenuItem
             {
                 Header = title,
                 StaysOpenOnClick = true,
-                Focusable = false
+                Focusable = false,
+                IsHitTestVisible = false
             };
 
             if (File.Exists(svgPath))
-                titleItem.Icon = CreateThemedSvgIcon(svgPath, MenuBrush, MenuUI.IconSize);
-            else
-                titleItem.Icon = null;
+                titleItem.Icon =
+                    CreateThemedSvgIcon(svgPath, MenuBrush, MenuUI.IconSize);
 
-            // Label row: no hover, no click
-            titleItem.IsHitTestVisible = false;
-
-            // ---------- Row 2: host-only editor row (no icon) ----------
             var noHoverTemplate = new ControlTemplate(typeof(MenuItem));
             {
-                var border = new FrameworkElementFactory(typeof(Border));
-                border.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+                var border =
+                    new FrameworkElementFactory(typeof(Border));
 
-                var content = new FrameworkElementFactory(typeof(ContentPresenter));
-                content.SetValue(ContentPresenter.ContentSourceProperty, "Header");
-                content.SetValue(FrameworkElement.MarginProperty, new Thickness(0));
+                border.SetValue(
+                    Border.BackgroundProperty,
+                    Brushes.Transparent);
+
+                var content =
+                    new FrameworkElementFactory(typeof(ContentPresenter));
+
+                content.SetValue(
+                    ContentPresenter.ContentSourceProperty,
+                    "Header");
+
+                content.SetValue(
+                    FrameworkElement.MarginProperty,
+                    new Thickness(0));
 
                 border.AppendChild(content);
                 noHoverTemplate.VisualTree = border;
@@ -3745,172 +4072,189 @@ namespace KeyClickOverlay
                 Template = noHoverTemplate
             };
 
-            // Editor grid: 1 row × 4 cols (W label | W box | H label | H box)
-            var grid = new Grid { Margin = new Thickness(8, 2, 8, 6) };
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var grid = new Grid
+            {
+                Margin = new Thickness(8, 2, 8 + MenuUI.RowRightInset, 6)
+            };
 
-            var wLbl = new TextBlock
+            grid.ColumnDefinitions.Add(
+                new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "GeoLabel1" });   // W: / X:
+            grid.ColumnDefinitions.Add(
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });             // first box — grows to fill
+            grid.ColumnDefinitions.Add(
+                new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "GeoLabel2" });   // H: / Y:
+            grid.ColumnDefinitions.Add(
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });             // second box — grows to fill
+
+            var widthLabel = new TextBlock
             {
                 Text = "W:",
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 8, 0),
                 FontSize = MenuUI.ItemFontSize
             };
-            Grid.SetColumn(wLbl, 0);
 
-            var wBox = new ModernWpf.Controls.NumberBox
-            {
-                Minimum = Math.Max(1, this.MinWidth),
-                Maximum = 10000,
-                SmallChange = 1,
-                LargeChange = 10,
-                SpinButtonPlacementMode = ModernWpf.Controls.NumberBoxSpinButtonPlacementMode.Hidden,
-                Width = 96,
-                HorizontalAlignment = HorizontalAlignment.Left
-            };
-            ModernWpf.Controls.Primitives.ControlHelper.SetCornerRadius(wBox, new CornerRadius(6));
-            Grid.SetColumn(wBox, 1);
+            Grid.SetColumn(widthLabel, 0);
 
-            // Tooltips (width/height)
-            wBox.ToolTip = "Window width (DIPs).";
-            ToolTipService.SetInitialShowDelay(wBox, 250);
-            ToolTipService.SetShowDuration(wBox, 20000);
-
-            // Optional: hovering "W:" also shows the same tooltip
-            wLbl.ToolTip = wBox.ToolTip;
-            ToolTipService.SetInitialShowDelay(wLbl, 250);
-            ToolTipService.SetShowDuration(wLbl, 20000);
-
-            var hLbl = new TextBlock
+            var heightLabel = new TextBlock
             {
                 Text = "H:",
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(18, 0, 8, 0),
+                Margin = new Thickness(MenuUI.GeometryLabelGap, 0, 8, 0),
                 FontSize = MenuUI.ItemFontSize
             };
-            Grid.SetColumn(hLbl, 2);
 
-            var hBox = new ModernWpf.Controls.NumberBox
-            {
-                Minimum = Math.Max(1, this.MinHeight),
-                Maximum = 10000,
-                SmallChange = 1,
-                LargeChange = 10,
-                SpinButtonPlacementMode = ModernWpf.Controls.NumberBoxSpinButtonPlacementMode.Hidden,
-                Width = 72,
-                HorizontalAlignment = HorizontalAlignment.Left
-            };
-            ModernWpf.Controls.Primitives.ControlHelper.SetCornerRadius(hBox, new CornerRadius(6));
-            Grid.SetColumn(hBox, 3);
+            Grid.SetColumn(heightLabel, 2);
 
-            hBox.ToolTip = "Window height (DIPs).";
-            ToolTipService.SetInitialShowDelay(hBox, 250);
-            ToolTipService.SetShowDuration(hBox, 20000);
-
-            // Optional: hovering "H:" also shows the same tooltip
-            hLbl.ToolTip = hBox.ToolTip;
-            ToolTipService.SetInitialShowDelay(hLbl, 250);
-            ToolTipService.SetShowDuration(hLbl, 20000);
-
-            grid.Children.Add(wLbl);
-            grid.Children.Add(wBox);
-            grid.Children.Add(hLbl);
-            grid.Children.Add(hBox);
-
-            editorItem.Header = grid;
-
-            // ---------- Apply size logic ----------
             bool updating = false;
 
             double ReadCurrentWidth()
             {
-                double w = (!double.IsNaN(ActualWidth) && ActualWidth > 0) ? ActualWidth : Width;
-                return Math.Max(this.MinWidth, w);
+                double width =
+                    !double.IsNaN(ActualWidth) && ActualWidth > 0
+                        ? ActualWidth
+                        : Width;
+
+                return Math.Max(MinWidth, width);
             }
 
             double ReadCurrentHeight()
             {
-                double h = (!double.IsNaN(ActualHeight) && ActualHeight > 0) ? ActualHeight : Height;
-                return Math.Max(this.MinHeight, h);
+                double height =
+                    !double.IsNaN(ActualHeight) && ActualHeight > 0
+                        ? ActualHeight
+                        : Height;
+
+                return Math.Max(MinHeight, height);
             }
 
-            void ApplySize(double newW, double newH)
+            void ApplySize(double width, double height)
             {
-                newW = Math.Max(this.MinWidth, newW);
-                newH = Math.Max(this.MinHeight, newH);
-
-                Width = newW;
-                Height = newH;
+                Width = Math.Max(MinWidth, width);
+                Height = Math.Max(MinHeight, height);
 
                 ClampWindowToVirtualScreen();
                 QueueFullRelayout();
             }
 
-            wBox.ValueChanged += (_, __) =>
-            {
-                if (updating) return;
-                if (double.IsNaN(wBox.Value)) return;
+            var widthInput = CreateNumericInput(
+                initialValue: ReadCurrentWidth(),
+                minimum: Math.Max(1, MinWidth),
+                maximum: 10000,
+                step: 1,
+                width: MenuUI.GeometryInputWidth,
+                numberFormat: "0",
+                stretchToFill: true,
+                onValueCommitted: value =>
+                {
+                    if (updating)
+                        return;
 
-                updating = true;
-                ApplySize(wBox.Value, ReadCurrentHeight());
-                updating = false;
-            };
+                    updating = true;
+                    ApplySize(value, ReadCurrentHeight());
+                    updating = false;
+                });
 
-            hBox.ValueChanged += (_, __) =>
-            {
-                if (updating) return;
-                if (double.IsNaN(hBox.Value)) return;
+            Grid.SetColumn(widthInput.Root, 1);
 
-                updating = true;
-                ApplySize(ReadCurrentWidth(), hBox.Value);
-                updating = false;
-            };
+            var heightInput = CreateNumericInput(
+                initialValue: ReadCurrentHeight(),
+                minimum: Math.Max(1, MinHeight),
+                maximum: 10000,
+                step: 1,
+                width: MenuUI.GeometryInputWidth,
+                numberFormat: "0",
+                stretchToFill: true,
+                onValueCommitted: value =>
+                {
+                    if (updating)
+                        return;
+
+                    updating = true;
+                    ApplySize(ReadCurrentWidth(), value);
+                    updating = false;
+                });
+
+            Grid.SetColumn(heightInput.Root, 3);
+
+            widthInput.Root.ToolTip = "Window width (DIPs).";
+            heightInput.Root.ToolTip = "Window height (DIPs).";
+
+            ToolTipService.SetInitialShowDelay(widthInput.Root, 250);
+            ToolTipService.SetShowDuration(widthInput.Root, 20000);
+
+            ToolTipService.SetInitialShowDelay(heightInput.Root, 250);
+            ToolTipService.SetShowDuration(heightInput.Root, 20000);
+
+            widthLabel.ToolTip = widthInput.Root.ToolTip;
+            heightLabel.ToolTip = heightInput.Root.ToolTip;
+
+            ToolTipService.SetInitialShowDelay(widthLabel, 250);
+            ToolTipService.SetShowDuration(widthLabel, 20000);
+
+            ToolTipService.SetInitialShowDelay(heightLabel, 250);
+            ToolTipService.SetShowDuration(heightLabel, 20000);
+
+            grid.Children.Add(widthLabel);
+            grid.Children.Add(widthInput.Root);
+            grid.Children.Add(heightLabel);
+            grid.Children.Add(heightInput.Root);
+
+            editorItem.Header = grid;
 
             void Sync()
             {
                 updating = true;
-                wBox.Value = Math.Round(ReadCurrentWidth());
-                hBox.Value = Math.Round(ReadCurrentHeight());
+
+                widthInput.SetValue(Math.Round(ReadCurrentWidth()));
+                heightInput.SetValue(Math.Round(ReadCurrentHeight()));
+
+                widthInput.ApplyTheme();
+                heightInput.ApplyTheme();
+
                 updating = false;
             }
 
             Sync();
+
             return (titleItem, editorItem, Sync);
         }
 
-
-        /// <summary>Creates a "Window position" section.</summary>
+        /// <summary>Create the Window position section of the context menu.</summary>
         private (MenuItem titleItem, MenuItem editorItem, Action Sync)
         CreateWindowBottomLeftRow(string title, string svgPath)
         {
-            // ---------- Row 1: normal menu item (icon works exactly like the others) ----------
             var titleItem = new MenuItem
             {
                 Header = title,
                 StaysOpenOnClick = true,
-                Focusable = false
+                Focusable = false,
+                IsHitTestVisible = false
             };
 
             if (File.Exists(svgPath))
-                titleItem.Icon = CreateThemedSvgIcon(svgPath, MenuBrush, MenuUI.IconSize);
-            else
-                titleItem.Icon = null;
+                titleItem.Icon =
+                    CreateThemedSvgIcon(svgPath, MenuBrush, MenuUI.IconSize);
 
-            // Label row: no hover, no click
-            titleItem.IsHitTestVisible = false;
-
-            // ---------- Row 2: host-only editor row (no icon) ----------
             var noHoverTemplate = new ControlTemplate(typeof(MenuItem));
             {
-                var border = new FrameworkElementFactory(typeof(Border));
-                border.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+                var border =
+                    new FrameworkElementFactory(typeof(Border));
 
-                var content = new FrameworkElementFactory(typeof(ContentPresenter));
-                content.SetValue(ContentPresenter.ContentSourceProperty, "Header");
-                content.SetValue(FrameworkElement.MarginProperty, new Thickness(0));
+                border.SetValue(
+                    Border.BackgroundProperty,
+                    Brushes.Transparent);
+
+                var content =
+                    new FrameworkElementFactory(typeof(ContentPresenter));
+
+                content.SetValue(
+                    ContentPresenter.ContentSourceProperty,
+                    "Header");
+
+                content.SetValue(
+                    FrameworkElement.MarginProperty,
+                    new Thickness(0));
 
                 border.AppendChild(content);
                 noHoverTemplate.VisualTree = border;
@@ -3921,127 +4265,134 @@ namespace KeyClickOverlay
                 StaysOpenOnClick = true,
                 Focusable = false,
                 Template = noHoverTemplate,
-                ToolTip = "Bottom-left corner position in screen coordinates (DIPs)."
+                ToolTip =
+                    "Bottom-left corner position in screen coordinates (DIPs)."
             };
 
-            // Editor grid: 1 row × 4 cols (X label | X box | Y label | Y box)
-            var grid = new Grid { Margin = new Thickness(8, 2, 8, 6) };
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var grid = new Grid
+            {
+                Margin = new Thickness(8, 2, 8 + MenuUI.RowRightInset, 6)
+            };
 
-            var xLbl = new TextBlock
+            grid.ColumnDefinitions.Add(
+                new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "GeoLabel1" });   // W: / X:
+            grid.ColumnDefinitions.Add(
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });             // first box — grows to fill
+            grid.ColumnDefinitions.Add(
+                new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "GeoLabel2" });   // H: / Y:
+            grid.ColumnDefinitions.Add(
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });             // second box — grows to fill
+
+            var xLabel = new TextBlock
             {
                 Text = "X:",
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 8, 0),
                 FontSize = MenuUI.ItemFontSize
             };
-            Grid.SetColumn(xLbl, 0);
 
-            var xBox = new ModernWpf.Controls.NumberBox
-            {
-                Minimum = -100000,
-                Maximum = 100000,
-                SmallChange = 1,
-                LargeChange = 10,
-                SpinButtonPlacementMode = ModernWpf.Controls.NumberBoxSpinButtonPlacementMode.Hidden,
-                Width = 96,
-                HorizontalAlignment = HorizontalAlignment.Left
-            };
-            ModernWpf.Controls.Primitives.ControlHelper.SetCornerRadius(xBox, new CornerRadius(6));
-            Grid.SetColumn(xBox, 1);
+            Grid.SetColumn(xLabel, 0);
 
-            var yLbl = new TextBlock
+            var yLabel = new TextBlock
             {
                 Text = "Y:",
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(18, 0, 8, 0),
+                Margin = new Thickness(MenuUI.GeometryLabelGap, 0, 8, 0),
                 FontSize = MenuUI.ItemFontSize
             };
-            Grid.SetColumn(yLbl, 2);
 
-            var yBox = new ModernWpf.Controls.NumberBox
-            {
-                Minimum = -100000,
-                Maximum = 100000,
-                SmallChange = 1,
-                LargeChange = 10,
-                SpinButtonPlacementMode = ModernWpf.Controls.NumberBoxSpinButtonPlacementMode.Hidden,
-                Width = 96,
-                HorizontalAlignment = HorizontalAlignment.Left
-            };
-            ModernWpf.Controls.Primitives.ControlHelper.SetCornerRadius(yBox, new CornerRadius(6));
-            Grid.SetColumn(yBox, 3);
+            Grid.SetColumn(yLabel, 2);
 
-            grid.Children.Add(xLbl);
-            grid.Children.Add(xBox);
-            grid.Children.Add(yLbl);
-            grid.Children.Add(yBox);
-
-            editorItem.Header = grid;
-
-            // ---------- Apply bottom-left logic ----------
             bool updating = false;
 
             double ReadCurrentHeight()
             {
-                double h = (!double.IsNaN(ActualHeight) && ActualHeight > 0) ? ActualHeight : Height;
-                return Math.Max(this.MinHeight, h);
+                double height =
+                    !double.IsNaN(ActualHeight) && ActualHeight > 0
+                        ? ActualHeight
+                        : Height;
+
+                return Math.Max(MinHeight, height);
             }
 
             double GetBottomLeftX() => Left;
 
-            double GetBottomLeftY()
-            {
-                double h = ReadCurrentHeight();
-                return Top + h;
-            }
+            double GetBottomLeftY() =>
+                Top + ReadCurrentHeight();
 
-            void ApplyBottomLeft(double newX, double newY)
+            void ApplyBottomLeft(double x, double y)
             {
-                double h = ReadCurrentHeight();
-
-                Left = newX;
-                Top = newY - h;
+                Left = x;
+                Top = y - ReadCurrentHeight();
 
                 ClampWindowToVirtualScreen();
                 QueueFullRelayout();
             }
 
-            xBox.ValueChanged += (_, __) =>
-            {
-                if (updating) return;
-                if (double.IsNaN(xBox.Value)) return;
+            var xInput = CreateNumericInput(
+                initialValue: GetBottomLeftX(),
+                minimum: -100000,
+                maximum: 100000,
+                step: 1,
+                width: MenuUI.GeometryInputWidth,
+                numberFormat: "0",
+                stretchToFill: true,
+                onValueCommitted: value =>
+                {
+                    if (updating)
+                        return;
 
-                updating = true;
-                ApplyBottomLeft(xBox.Value, GetBottomLeftY());
-                updating = false;
-            };
+                    updating = true;
+                    ApplyBottomLeft(value, GetBottomLeftY());
+                    updating = false;
+                });
 
-            yBox.ValueChanged += (_, __) =>
-            {
-                if (updating) return;
-                if (double.IsNaN(yBox.Value)) return;
+            Grid.SetColumn(xInput.Root, 1);
 
-                updating = true;
-                ApplyBottomLeft(GetBottomLeftX(), yBox.Value);
-                updating = false;
-            };
+            var yInput = CreateNumericInput(
+                initialValue: GetBottomLeftY(),
+                minimum: -100000,
+                maximum: 100000,
+                step: 1,
+                width: MenuUI.GeometryInputWidth,
+                numberFormat: "0",
+                stretchToFill: true,
+                onValueCommitted: value =>
+                {
+                    if (updating)
+                        return;
+
+                    updating = true;
+                    ApplyBottomLeft(GetBottomLeftX(), value);
+                    updating = false;
+                });
+
+            Grid.SetColumn(yInput.Root, 3);
+
+            grid.Children.Add(xLabel);
+            grid.Children.Add(xInput.Root);
+            grid.Children.Add(yLabel);
+            grid.Children.Add(yInput.Root);
+
+            editorItem.Header = grid;
 
             void Sync()
             {
                 updating = true;
-                xBox.Value = Math.Round(GetBottomLeftX());
-                yBox.Value = Math.Round(GetBottomLeftY());
+
+                xInput.SetValue(Math.Round(GetBottomLeftX()));
+                yInput.SetValue(Math.Round(GetBottomLeftY()));
+
+                xInput.ApplyTheme();
+                yInput.ApplyTheme();
+
                 updating = false;
             }
 
             Sync();
+
             return (titleItem, editorItem, Sync);
         }
-
 
         // === Background color dialog (PixiEditor picker + eyedropper) ===
 
