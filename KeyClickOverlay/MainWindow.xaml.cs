@@ -3687,11 +3687,7 @@ namespace KeyClickOverlay
             clearChrome.AppendChild(clearContent);
             clearTemplate.VisualTree = clearChrome;
 
-            var clearHoverBrush =
-                new SolidColorBrush(AppTheme.MenuHoverColor);
-
-            if (clearHoverBrush.CanFreeze)
-                clearHoverBrush.Freeze();
+            var clearHoverBrush = SolidBrush("#307F7F7F");
 
             var clearHoverTrigger = new Trigger
             {
