@@ -3593,6 +3593,7 @@ namespace KeyClickOverlay
             double step,
             double? width,
             string numberFormat,
+            bool showStepButtons = false,
             Action<double>? onValueCommitted = null,
             bool stretchToFill = false)
         {
@@ -3645,23 +3646,119 @@ namespace KeyClickOverlay
 
             var clearButton = new Button
             {
-                // Prevent ModernWpf's implicit Button style from being applied.
                 Style = new Style(typeof(Button)),
-
                 Content = clearGlyph,
+
                 Width = MenuUI.NumericClearButtonWidth - 2,
                 Height = MenuUI.NumericClearButtonWidth - 2,
+
                 Padding = new Thickness(0),
                 Background = Brushes.Transparent,
                 BorderBrush = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
+
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
+
                 Focusable = false,
                 FocusVisualStyle = null,
                 Cursor = Cursors.Hand,
+
                 Visibility = Visibility.Hidden
             };
+
+            var stepPanel = new Grid
+            {
+                Height = 24,
+                VerticalAlignment = VerticalAlignment.Center,
+
+                Visibility = showStepButtons
+                    ? Visibility.Visible
+                    : Visibility.Hidden
+            };
+
+            stepPanel.RowDefinitions.Add(
+                new RowDefinition
+                {
+                    Height = new GridLength(1, GridUnitType.Star)
+                });
+
+            stepPanel.RowDefinitions.Add(
+                new RowDefinition
+                {
+                    Height = new GridLength(1, GridUnitType.Star)
+                });
+
+            (Button Button, System.Windows.Shapes.Path Glyph)
+                CreateStepButton(bool pointsUp)
+            {
+                var glyph = new System.Windows.Shapes.Path
+                {
+                    Data = pointsUp
+                        ? Geometry.Parse("M 1,5 L 5,1 L 9,5")
+                        : Geometry.Parse("M 1,1 L 5,5 L 9,1"),
+
+                    StrokeThickness = 1.0,
+                    StrokeStartLineCap = PenLineCap.Round,
+                    StrokeEndLineCap = PenLineCap.Round,
+                    StrokeLineJoin = PenLineJoin.Round,
+
+                    Width = 10,
+                    Height = 6,
+                    Stretch = Stretch.None,
+
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+
+                    IsHitTestVisible = false
+                };
+
+                var button = new Button
+                {
+                    Style = new Style(typeof(Button)),
+                    Content = glyph,
+
+                    Padding = new Thickness(0),
+                    Margin = new Thickness(0),
+
+                    Background = Brushes.Transparent,
+                    BorderBrush = Brushes.Transparent,
+                    BorderThickness = new Thickness(0),
+
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    VerticalAlignment = VerticalAlignment.Stretch,
+
+                    Focusable = true,
+                    FocusVisualStyle = null,
+                    Cursor = Cursors.Hand
+                };
+
+                return (button, glyph);
+            }
+
+            var (stepUpButton, stepUpGlyph) =
+                CreateStepButton(pointsUp: true);
+
+            var (stepDownButton, stepDownGlyph) =
+                CreateStepButton(pointsUp: false);
+
+            Grid.SetRow(stepUpButton, 0);
+            Grid.SetRow(stepDownButton, 1);
+
+            stepPanel.Children.Add(stepUpButton);
+            stepPanel.Children.Add(stepDownButton);
+
+            var buttonHost = new Grid();
+
+            buttonHost.Children.Add(stepPanel);
+            buttonHost.Children.Add(clearButton);
+
+            Grid.SetColumn(buttonHost, 1);
+
+            grid.Children.Add(textBox);
+            grid.Children.Add(buttonHost);
+
+            border.Child = grid;
 
             var clearTemplate = new ControlTemplate(typeof(Button));
 
@@ -3702,13 +3799,10 @@ namespace KeyClickOverlay
                     "ClearChrome"));
 
             clearTemplate.Triggers.Add(clearHoverTrigger);
+            
             clearButton.Template = clearTemplate;
-
-            Grid.SetColumn(clearButton, 1);
-
-            grid.Children.Add(textBox);
-            grid.Children.Add(clearButton);
-            border.Child = grid;
+            stepUpButton.Template = clearTemplate;
+            stepDownButton.Template = clearTemplate;
 
             double NormalizeValue(double value)
             {
@@ -3748,6 +3842,28 @@ namespace KeyClickOverlay
                 textBox.Text = FormatValue(value);
             }
 
+            void StepValue(double direction)
+            {
+                double currentValue =
+                    ReadValue() ?? lastValidValue;
+
+                double newValue =
+                    NormalizeValue(currentValue + (step * direction));
+
+                SetValue(newValue);
+                onValueCommitted?.Invoke(newValue);
+            }
+
+            stepUpButton.Click += (_, __) =>
+            {
+                StepValue(1);
+            };
+
+            stepDownButton.Click += (_, __) =>
+            {
+                StepValue(-1);
+            };
+
             void RestoreLastValid()
             {
                 textBox.Text = FormatValue(lastValidValue);
@@ -3786,7 +3902,10 @@ namespace KeyClickOverlay
 
                     textBox.Foreground = SolidBrush("#111111");
                     textBox.CaretBrush = SolidBrush("#111111");
+
                     clearGlyph.Foreground = SolidBrush("#606060");
+                    stepUpGlyph.Stroke = SolidBrush("#606060");
+                    stepDownGlyph.Stroke = SolidBrush("#606060");
                 }
                 else
                 {
@@ -3802,20 +3921,31 @@ namespace KeyClickOverlay
 
                     textBox.Foreground = SolidBrush("#EEEEEE");
                     textBox.CaretBrush = SolidBrush("#FFFFFF");
+
                     clearGlyph.Foreground = SolidBrush("#BDBDBD");
+                    stepUpGlyph.Stroke = SolidBrush("#BDBDBD");
+                    stepDownGlyph.Stroke = SolidBrush("#BDBDBD");
                 }
             }
 
             textBox.GotKeyboardFocus += (_, __) =>
             {
+                if (showStepButtons)
+                    stepPanel.Visibility = Visibility.Hidden;
+
                 clearButton.Visibility = Visibility.Visible;
+
                 textBox.SelectAll();
                 ApplyTheme();
             };
-
+            
             textBox.LostKeyboardFocus += (_, __) =>
             {
                 clearButton.Visibility = Visibility.Hidden;
+
+                if (showStepButtons)
+                    stepPanel.Visibility = Visibility.Visible;
+
                 CommitCurrentValue();
                 ApplyTheme();
             };
@@ -4143,8 +4273,9 @@ namespace KeyClickOverlay
                 step: 1,
                 width: null,
                 numberFormat: "0",
+                showStepButtons: true,
                 stretchToFill: true,
-                onValueCommitted: value =>
+                            onValueCommitted: value =>
                 {
                     if (updating)
                         return;
@@ -4163,8 +4294,9 @@ namespace KeyClickOverlay
                 step: 1,
                 width: null,
                 numberFormat: "0",
+                showStepButtons: true,
                 stretchToFill: true,
-                onValueCommitted: value =>
+                            onValueCommitted: value =>
                 {
                     if (updating)
                         return;
@@ -4335,8 +4467,9 @@ namespace KeyClickOverlay
                 step: 1,
                 width: null,
                 numberFormat: "0",
+                showStepButtons: true,
                 stretchToFill: true,
-                onValueCommitted: value =>
+                            onValueCommitted: value =>
                 {
                     if (updating)
                         return;
@@ -4355,8 +4488,9 @@ namespace KeyClickOverlay
                 step: 1,
                 width: null,
                 numberFormat: "0",
+                showStepButtons: true,
                 stretchToFill: true,
-                onValueCommitted: value =>
+                            onValueCommitted: value =>
                 {
                     if (updating)
                         return;
