@@ -4557,8 +4557,7 @@ namespace KeyClickOverlay
                 try
                 {
                     NativeMethods.TryApplyWin11RoundedCorners(dlg);
-                    var isDark = ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark;
-                    NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, isDark);
+                    NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, AppTheme.IsDark);
                 }
                 catch { }
             };
@@ -4579,37 +4578,48 @@ namespace KeyClickOverlay
             // Load PixiEditor style if not yet cached
             if (_pixiColorPickerStyle is null)
             {
-                bool dark = ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark;
                 var rd = new ResourceDictionary
                 {
-                    Source = dark
-                        ? new Uri("pack://application:,,,/KeyClickOverlay;component/Styles/DarkColorPickerStyle.xaml", UriKind.RelativeOrAbsolute)
-                        : new Uri("pack://application:,,,/KeyClickOverlay;component/Styles/LightColorPickerStyle.xaml", UriKind.RelativeOrAbsolute)
+                    Source = AppTheme.IsDark
+                        ? new Uri(
+                            "pack://application:,,,/KeyClickOverlay;component/Styles/DarkColorPickerStyle.xaml",
+                            UriKind.RelativeOrAbsolute)
+                        : new Uri(
+                            "pack://application:,,,/KeyClickOverlay;component/Styles/LightColorPickerStyle.xaml",
+                            UriKind.RelativeOrAbsolute)
                 };
-                _pixiColorPickerStyle = (Style)rd["DefaultColorPickerStyle"];
+
+                _pixiColorPickerStyle =
+                    (Style)rd["DefaultColorPickerStyle"];
             }
             // Apply style
             picker.Style = _pixiColorPickerStyle;
 
             // React when theme changes (switching Dark/Light while dialog is open)
-            void OnPickerThemeChanged(ThemeManager s, object e)
+            void OnPickerThemeChanged(object? sender, EventArgs e)
             {
-                bool dark = ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark;
                 var rd = new ResourceDictionary
                 {
-                    Source = dark
-                                ? new Uri("pack://application:,,,/KeyClickOverlay;component/Styles/DarkColorPickerStyle.xaml", UriKind.RelativeOrAbsolute)
-                                : new Uri("pack://application:,,,/KeyClickOverlay;component/Styles/LightColorPickerStyle.xaml", UriKind.RelativeOrAbsolute)
+                    Source = AppTheme.IsDark
+                        ? new Uri(
+                            "pack://application:,,,/KeyClickOverlay;component/Styles/DarkColorPickerStyle.xaml",
+                            UriKind.RelativeOrAbsolute)
+                        : new Uri(
+                            "pack://application:,,,/KeyClickOverlay;component/Styles/LightColorPickerStyle.xaml",
+                            UriKind.RelativeOrAbsolute)
                 };
-                picker.Style = (Style)rd["DefaultColorPickerStyle"];
+
+                _pixiColorPickerStyle =
+                    (Style)rd["DefaultColorPickerStyle"];
+
+                picker.Style = _pixiColorPickerStyle;
             }
 
-            ThemeManager.Current.ActualApplicationThemeChanged += OnPickerThemeChanged;
+            AppTheme.Changed += OnPickerThemeChanged;
 
-            // Unsubscribe when the dialog closes
             dlg.Closed += (_, __) =>
             {
-                ThemeManager.Current.ActualApplicationThemeChanged -= OnPickerThemeChanged;
+                AppTheme.Changed -= OnPickerThemeChanged;
             };
 
             return (dlg, picker);
@@ -4626,7 +4636,7 @@ namespace KeyClickOverlay
         {
             // ---------- Dialog surface & themed shell ----------
             var surfaceKeys = new[] { "LayerFillColorDefaultBrush" };
-            bool darkNow = ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark;
+            bool darkNow = AppTheme.IsDark;
             var fallbackSurface = new SolidColorBrush(darkNow ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249))
             { Opacity = 0.96 };
             if (fallbackSurface.CanFreeze) fallbackSurface.Freeze();
@@ -4694,9 +4704,21 @@ namespace KeyClickOverlay
             outer.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             outer.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            void OnThemeChanged(object? _, object __) => ApplyOpaqueLayerBackground(dlg, outer, surfaceKeys, fallbackSurface);
-            ThemeManager.Current.ActualApplicationThemeChanged += OnThemeChanged;
-            dlg.Closed += (_, __) => ThemeManager.Current.ActualApplicationThemeChanged -= OnThemeChanged;
+            void OnThemeChanged(object? sender, EventArgs e)
+            {
+                ApplyOpaqueLayerBackground(
+                    dlg,
+                    outer,
+                    surfaceKeys,
+                    fallbackSurface);
+            }
+
+            AppTheme.Changed += OnThemeChanged;
+
+            dlg.Closed += (_, __) =>
+            {
+                AppTheme.Changed -= OnThemeChanged;
+            };
 
             // Style island: isolate Pixi picker from ModernWpf implicit styles so its templates render unmodified
             var styleIsland = new Grid();
@@ -4825,7 +4847,7 @@ namespace KeyClickOverlay
                         }
                     }
 
-                    ApplyEyedropperTheme(ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark);
+                    ApplyEyedropperTheme(AppTheme.IsDark);
 
                     // Button shell (rounded, uses its Background)
                     var eyedropperBtn = new Button
@@ -4862,7 +4884,7 @@ namespace KeyClickOverlay
 
                     void LoadEyedropperIcon(bool active)
                     {
-                        bool dark = ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark;
+                        bool dark = AppTheme.IsDark;
                         string fileName =
                                 active
                                 ? (dark ? "eyedropper_pressed_dark.svg" : "eyedropper_pressed_light.svg")
@@ -4884,20 +4906,21 @@ namespace KeyClickOverlay
                     eyedropperBtn.Content = svg;
 
                     // Theme updates for the eyedropper button (and icon) while dialog is open
-                    void OnDropperThemeChanged(ThemeManager s, object e)
+                    void OnDropperThemeChanged(object? sender, EventArgs e)
                     {
-                        ApplyEyedropperTheme(ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark);
+                        ApplyEyedropperTheme(AppTheme.IsDark);
                         LoadEyedropperIcon(eyedropperActive);
                         setEyedropperToggle?.Invoke(eyedropperActive);
                     }
 
-                    ThemeManager.Current.ActualApplicationThemeChanged += OnDropperThemeChanged;
+                    AppTheme.Changed += OnDropperThemeChanged;
 
-                    // On close: stop eyedropper (if active) and detach theme handler
                     dlg.Closed += (_, __) =>
                     {
-                        if (eyedropperActive) EndEyedropper(revert: true);
-                        ThemeManager.Current.ActualApplicationThemeChanged -= OnDropperThemeChanged;
+                        if (eyedropperActive)
+                            EndEyedropper(revert: true);
+
+                        AppTheme.Changed -= OnDropperThemeChanged;
                     };
 
                     // Match ColorDisplay layout, then nudge it a bit
@@ -4925,8 +4948,10 @@ namespace KeyClickOverlay
                         SolidColorBrush borderDark = new(Color.FromRgb(0x8f, 0x8f, 0x8f));
                         SolidColorBrush borderLight = new(Color.FromRgb(0x9a, 0x9a, 0x9a));
                         eyedropperBtn.BorderBrush = on
-                                ? (ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark ? borderDark : borderLight)
-                                : Brushes.Transparent;
+                            ? (AppTheme.IsDark
+                                ? borderDark
+                                : borderLight)
+                            : Brushes.Transparent;
                         eyedropperBtn.BorderThickness = on ? new Thickness(1.5) : new Thickness(0);
 
                         LoadEyedropperIcon(on);
@@ -5524,7 +5549,7 @@ namespace KeyClickOverlay
         private static void ApplyOpaqueLayerBackground(Window win, DependencyObject target, string[] keys, Brush fallback)
         {
             var fbColor = (fallback as SolidColorBrush)?.Color
-                          ?? (ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark
+                          ?? (AppTheme.IsDark
                               ? Color.FromRgb(43, 43, 43)
                               : Color.FromRgb(249, 249, 249));
 
