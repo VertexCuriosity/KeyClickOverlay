@@ -1,8 +1,11 @@
 ﻿using ColorPicker;
 using Gma.System.MouseKeyHook;
 using Microsoft.WindowsAPICodePack.Taskbar;
-using ModernWpf;
-using ModernWpf.Controls.Primitives;
+using Wpf.Ui.Appearance;
+using Wpf.Ui.Markup;
+using FluentWindow = Wpf.Ui.Controls.FluentWindow;
+using WpfTitleBar = Wpf.Ui.Controls.TitleBar;
+using WindowBackdropType = Wpf.Ui.Controls.WindowBackdropType;
 using SharpVectors.Converters;
 using SharpVectors.Renderers.Wpf;
 using System.IO;
@@ -1208,8 +1211,6 @@ namespace KeyClickOverlay
             catch { /* best-effort check only */ }
 
             // ---------- Window hooks & chrome ----------
-            ThemeManager.SetIsThemeAware(this, true); // theme-aware window
-
             Loaded += OnMainWindowLoaded;
 
             PreviewKeyDown += OnNudgeWindowPreviewKeyDown;
@@ -3295,8 +3296,6 @@ namespace KeyClickOverlay
         {
             if (cm is null) return;
 
-            cm.SetValue(ThemeManager.IsThemeAwareProperty, true);
-
             // Theme brushes (light/dark)
             var bg = new SolidColorBrush(AppTheme.MenuBackgroundColor)
             {
@@ -3621,9 +3620,6 @@ namespace KeyClickOverlay
 
             var textBox = new TextBox
             {
-                // Prevent ModernWpf's implicit TextBox style from being applied.
-                Style = new Style(typeof(TextBox)),
-
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 Padding = new Thickness(5, 0, 0, 0),
@@ -3646,7 +3642,6 @@ namespace KeyClickOverlay
 
             var clearButton = new Button
             {
-                Style = new Style(typeof(Button)),
                 Content = clearGlyph,
 
                 Width = MenuUI.NumericClearButtonWidth - 2,
@@ -4529,11 +4524,53 @@ namespace KeyClickOverlay
 
         // === Background color dialog (PixiEditor picker + eyedropper) ===
 
+        /// <summary>
+        /// Applies WPF-UI resources to one dialog only and updates its local theme.
+        /// </summary>
+        private static void ApplyWpfUiDialogTheme(FrameworkElement dialog)
+        {
+            var theme =
+                AppTheme.IsDark
+                    ? Wpf.Ui.Appearance.ApplicationTheme.Dark
+                    : Wpf.Ui.Appearance.ApplicationTheme.Light;
+
+            // Keep one ThemesDictionary for the lifetime of the dialog.
+            var themeDictionary =
+                dialog.Resources.MergedDictionaries
+                    .OfType<ThemesDictionary>()
+                    .FirstOrDefault();
+
+            if (themeDictionary is null)
+            {
+                themeDictionary = new ThemesDictionary
+                {
+                    Theme = theme
+                };
+
+                dialog.Resources.MergedDictionaries.Add(themeDictionary);
+            }
+            else
+            {
+                themeDictionary.Theme = theme;
+            }
+
+            // ControlsDictionary must only be added once.
+            // Removing/re-adding it after the Window has been shown can cause
+            // WPF window properties such as AllowsTransparency to be reapplied.
+            if (!dialog.Resources.MergedDictionaries
+                .OfType<ControlsDictionary>()
+                .Any())
+            {
+                dialog.Resources.MergedDictionaries.Add(
+                    new ControlsDictionary());
+            }
+        }
+
         /// <summary>Create a themed dialog shell hosting PixiEditor’s color picker.</summary>
-        private (Window dlg, StandardColorPicker picker) CreateColorDialogShell(string[] surfaceKeys, Brush fallbackSurface)
+        private (FluentWindow dlg, StandardColorPicker picker) CreateColorDialogShell(string[] surfaceKeys, Brush fallbackSurface)
         {
             // Build Window (Dialog Shell)
-            var dlg = new Window
+            var dlg = new FluentWindow
             {
                 Title = "Select background color",
                 SizeToContent = SizeToContent.WidthAndHeight,
@@ -4544,13 +4581,11 @@ namespace KeyClickOverlay
                 ShowInTaskbar = false,
                 Topmost = true,
                 Owner = this,
-                Background = fallbackSurface
+                Background = fallbackSurface,
+                WindowBackdropType = WindowBackdropType.None
             };
 
-            WindowHelper.SetUseModernWindowStyle(dlg, true);
-            ThemeManager.SetIsThemeAware(dlg, true);
-            BindDynamicResource(dlg, Window.BackgroundProperty, surfaceKeys);
-            BindDynamicResource(dlg, Control.ForegroundProperty, "TextFillColorPrimaryBrush", "SystemControlForegroundBaseHighBrush");
+            ApplyWpfUiDialogTheme(dlg);
 
             dlg.SourceInitialized += (_, __) =>
             {
@@ -4562,6 +4597,8 @@ namespace KeyClickOverlay
                 catch { }
             };
 
+            BindDynamicResource(dlg, Control.ForegroundProperty, "TextFillColorPrimaryBrush", "SystemControlForegroundBaseHighBrush");
+
             // Create StandardColorPicker
             byte initA = (byte)Math.Round(Math.Clamp(_backgroundOpacity, 0, 1) * 255);
 
@@ -4572,32 +4609,32 @@ namespace KeyClickOverlay
                 ShowAlpha = true,
                 MinWidth = 360,
                 MinHeight = 440,
-                Background = fallbackSurface
             };
 
-            // Load PixiEditor style if not yet cached
-            if (_pixiColorPickerStyle is null)
+            // Load the Pixi style that matches the current theme.
+            var rd = new ResourceDictionary
             {
-                var rd = new ResourceDictionary
-                {
-                    Source = AppTheme.IsDark
-                        ? new Uri(
-                            "pack://application:,,,/KeyClickOverlay;component/Styles/DarkColorPickerStyle.xaml",
-                            UriKind.RelativeOrAbsolute)
-                        : new Uri(
-                            "pack://application:,,,/KeyClickOverlay;component/Styles/LightColorPickerStyle.xaml",
-                            UriKind.RelativeOrAbsolute)
-                };
+                Source = AppTheme.IsDark
+                    ? new Uri(
+                        "pack://application:,,,/KeyClickOverlay;component/Styles/DarkColorPickerStyle.xaml",
+                        UriKind.RelativeOrAbsolute)
+                    : new Uri(
+                        "pack://application:,,,/KeyClickOverlay;component/Styles/LightColorPickerStyle.xaml",
+                        UriKind.RelativeOrAbsolute)
+            };
 
-                _pixiColorPickerStyle =
-                    (Style)rd["DefaultColorPickerStyle"];
-            }
-            // Apply style
+            _pixiColorPickerStyle =
+                (Style)rd["DefaultColorPickerStyle"];
+
             picker.Style = _pixiColorPickerStyle;
 
             // React when theme changes (switching Dark/Light while dialog is open)
             void OnPickerThemeChanged(object? sender, EventArgs e)
             {
+                ApplyWpfUiDialogTheme(dlg);
+
+                NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, AppTheme.IsDark);
+
                 var rd = new ResourceDictionary
                 {
                     Source = AppTheme.IsDark
@@ -4625,7 +4662,7 @@ namespace KeyClickOverlay
             return (dlg, picker);
         }
 
-        /// <summary>Show a ModernWpf-themed Pixi color dialog with eyedropper and live preview.</summary>
+        /// <summary>Show a themed Pixi color dialog with eyedropper and live preview.</summary>
         private void ShowThemedColorDialog(
             string? title,               // dialog title (can be null to keep default)
             bool showAlpha,             // show alpha slider (true for background, false for mouse)
@@ -4636,10 +4673,24 @@ namespace KeyClickOverlay
         {
             // ---------- Dialog surface & themed shell ----------
             var surfaceKeys = new[] { "LayerFillColorDefaultBrush" };
-            bool darkNow = AppTheme.IsDark;
-            var fallbackSurface = new SolidColorBrush(darkNow ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249))
-            { Opacity = 0.96 };
-            if (fallbackSurface.CanFreeze) fallbackSurface.Freeze();
+            
+            SolidColorBrush CreateFallbackSurface()
+            {
+                var brush = new SolidColorBrush(
+                    AppTheme.IsDark
+                        ? Color.FromRgb(43, 43, 43)
+                        : Color.FromRgb(249, 249, 249))
+                {
+                    Opacity = 0.96
+                };
+
+                if (brush.CanFreeze)
+                    brush.Freeze();
+
+                return brush;
+            }
+
+            var fallbackSurface = CreateFallbackSurface();
 
             var (dlg, picker) = CreateColorDialogShell(surfaceKeys, fallbackSurface);
             if (!string.IsNullOrEmpty(title)) dlg.Title = title;
@@ -4696,21 +4747,92 @@ namespace KeyClickOverlay
             };
 
             // ---------- Layout ----------------------------------
-            var bottom = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var bottom = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+
             bottom.Children.Add(ok);
             bottom.Children.Add(cancel);
 
             var outer = new Grid();
-            outer.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            outer.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
+            outer.RowDefinitions.Add(
+                new RowDefinition
+                {
+                    Height = new GridLength(1, GridUnitType.Star)
+                });
+
+            outer.RowDefinitions.Add(
+                new RowDefinition
+                {
+                    Height = GridLength.Auto
+                });
+
+            // Style island: isolate Pixi from implicit styles in the surrounding dialog.
+            var styleIsland = new Grid();
+
+            styleIsland.Resources.MergedDictionaries.Add(
+                BuildPixiStyleResetDictionary());
+
+            styleIsland.Children.Add(picker);
+
+            Grid.SetRow(styleIsland, 0);
+            outer.Children.Add(styleIsland);
+
+            Grid.SetRow(bottom, 1);
+            outer.Children.Add(bottom);
+
+            outer.HorizontalAlignment = HorizontalAlignment.Stretch;
+            outer.VerticalAlignment = VerticalAlignment.Stretch;
+
+            picker.HorizontalAlignment = HorizontalAlignment.Stretch;
+            picker.VerticalAlignment = VerticalAlignment.Stretch;
+
+            // ---------- WPF-UI window shell ----------------------
+            var titleBar = new WpfTitleBar
+            {
+                Title = string.Empty,
+                ShowMinimize = false,
+                ShowMaximize = false,
+                ShowClose = true,
+                Height = 40,
+                Background = fallbackSurface
+            };
+
+            var dialogRoot = new Grid
+            {
+                Background = fallbackSurface
+            };
+
+            dialogRoot.RowDefinitions.Add(
+                new RowDefinition
+                {
+                    Height = GridLength.Auto
+                });
+
+            dialogRoot.RowDefinitions.Add(
+                new RowDefinition
+                {
+                    Height = new GridLength(1, GridUnitType.Star)
+                });
+
+            Grid.SetRow(titleBar, 0);
+            Grid.SetRow(outer, 1);
+
+            dialogRoot.Children.Add(titleBar);
+            dialogRoot.Children.Add(outer);
+
+            // ---------- Theme updates -----------------------------
             void OnThemeChanged(object? sender, EventArgs e)
             {
-                ApplyOpaqueLayerBackground(
-                    dlg,
-                    outer,
-                    surfaceKeys,
-                    fallbackSurface);
+                var surface = CreateFallbackSurface();
+
+                dlg.Background = surface;
+                dialogRoot.Background = surface;
+                titleBar.Background = surface;
+                outer.Background = surface;
             }
 
             AppTheme.Changed += OnThemeChanged;
@@ -4720,25 +4842,15 @@ namespace KeyClickOverlay
                 AppTheme.Changed -= OnThemeChanged;
             };
 
-            // Style island: isolate Pixi picker from ModernWpf implicit styles so its templates render unmodified
-            var styleIsland = new Grid();
-            styleIsland.Resources.MergedDictionaries.Add(BuildPixiResetDictionary());
-            styleIsland.Children.Add(picker);
-            outer.Children.Add(styleIsland);
-            Grid.SetRow(styleIsland, 0);
+            // Initial surface
+            dlg.Background = fallbackSurface;
+            dialogRoot.Background = fallbackSurface;
+            titleBar.Background = fallbackSurface;
+            outer.Background = fallbackSurface;
 
-            Grid.SetRow(bottom, 1);
-            outer.Children.Add(bottom);
+            dlg.Content = dialogRoot;
 
-            outer.HorizontalAlignment = HorizontalAlignment.Stretch;
-            outer.VerticalAlignment = VerticalAlignment.Stretch;
-            picker.HorizontalAlignment = HorizontalAlignment.Stretch;
-            picker.VerticalAlignment = VerticalAlignment.Stretch;
-
-            ApplyOpaqueLayerBackground(dlg, outer, surfaceKeys, fallbackSurface);
-            dlg.Content = outer;
-
-            // ---------- Window chrome & position ---------------------
+            // ---------- Window behavior & position -------------------
             dlg.Owner = this;
             dlg.ShowInTaskbar = false;
             dlg.ResizeMode = ResizeMode.NoResize;
@@ -5567,12 +5679,16 @@ namespace KeyClickOverlay
             }
         }
 
-        /// <summary>Build a fresh ResourceDictionary that clears ModernWpf implicit styles under the PixiEditor subtree so Pixi templates render as intended.</summary>
-        private static ResourceDictionary BuildPixiResetDictionary()
+        /// <summary>
+        /// Builds a resource dictionary that isolates PixiEditor controls
+        /// from implicit styles applied by the surrounding dialog.
+        /// </summary>
+        private static ResourceDictionary BuildPixiStyleResetDictionary()
         {
             return new ResourceDictionary
             {
-                // Keep this list focused—only types that ModernWpf restyles and that Pixi doesn't template itself.
+                // Keep this list focused on controls whose surrounding implicit styles
+                // could interfere with PixiEditor's own templates.
                 [typeof(TextBox)] = new Style(typeof(TextBox)),
                 [typeof(ComboBox)] = new Style(typeof(ComboBox)),
                 [typeof(ComboBoxItem)] = new Style(typeof(ComboBoxItem)),
@@ -6851,7 +6967,7 @@ namespace KeyClickOverlay
             Grid.SetColumn(content, 1);
             outer.Children.Add(content);
 
-            // Window shell (ModernWpf chrome + themed surface)
+            // Window shell
             var dlg = new Window
             {
                 Owner = this,
@@ -6865,12 +6981,9 @@ namespace KeyClickOverlay
                 Content = outer
             };
 
-            ModernWpf.Controls.Primitives.WindowHelper.SetUseModernWindowStyle(dlg, true);
-            ThemeManager.SetIsThemeAware(dlg, true);
-
             // Apply acrylic/opaque surface with theme fallback
             var surfaceKeys = new[] { "LayerFillColorDefaultBrush" };
-            bool darkNow = ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark;
+            bool darkNow = AppTheme.IsDark;
             var fallbackSurface = new SolidColorBrush(darkNow ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249));
             if (fallbackSurface.CanFreeze) fallbackSurface.Freeze();
             ApplyOpaqueLayerBackground(dlg, outer, surfaceKeys, fallbackSurface);
@@ -6881,10 +6994,12 @@ namespace KeyClickOverlay
                 try
                 {
                     NativeMethods.TryApplyWin11RoundedCorners(dlg);
-                    bool isDark = ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark;
-                    NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, isDark);
+                    NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, AppTheme.IsDark);
                 }
-                catch { /* best-effort visuals */ }
+                catch
+                {
+                    // Best-effort visual styling only.
+                }
             };
 
             // Wire result
@@ -6952,7 +7067,7 @@ namespace KeyClickOverlay
             Grid.SetColumn(content, 1);
             outer.Children.Add(content);
 
-            // Window shell (ModernWpf chrome + themed surface)
+            // Window shell
             var dlg = new Window
             {
                 Owner = this,
@@ -6965,12 +7080,10 @@ namespace KeyClickOverlay
                 Topmost = true,
                 Content = outer
             };
-            ModernWpf.Controls.Primitives.WindowHelper.SetUseModernWindowStyle(dlg, true);
-            ThemeManager.SetIsThemeAware(dlg, true);
 
-            // Apply acrylic/opaque surface with theme fallback
+            // Apply opaque surface with theme fallback
             var surfaceKeys = new[] { "LayerFillColorDefaultBrush" };
-            bool darkNow = ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark;
+            bool darkNow = AppTheme.IsDark;
             var fallbackSurface = new SolidColorBrush(darkNow ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249));
             if (fallbackSurface.CanFreeze) fallbackSurface.Freeze();
             ApplyOpaqueLayerBackground(dlg, outer, surfaceKeys, fallbackSurface);
@@ -6981,8 +7094,7 @@ namespace KeyClickOverlay
                 try
                 {
                     NativeMethods.TryApplyWin11RoundedCorners(dlg);
-                    bool isDark = ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark;
-                    NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, isDark);
+                    NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, AppTheme.IsDark);
                 }
                 catch { /* best-effort visuals */ }
             };
@@ -7093,13 +7205,9 @@ namespace KeyClickOverlay
                 Content = outer
             };
 
-            WindowHelper.SetUseModernWindowStyle(dlg, true);
-            ThemeManager.SetIsThemeAware(dlg, true);
-
             var surfaceKeys = new[] { "LayerFillColorDefaultBrush" };
 
-            bool darkNow =
-                ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark;
+            bool darkNow = AppTheme.IsDark;
 
             var fallbackSurface = new SolidColorBrush(
                 darkNow
@@ -7121,11 +7229,7 @@ namespace KeyClickOverlay
                 {
                     NativeMethods.TryApplyWin11RoundedCorners(dlg);
 
-                    bool isDark =
-                        ThemeManager.Current.ActualApplicationTheme ==
-                        ApplicationTheme.Dark;
-
-                    NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, isDark);
+                    NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, AppTheme.IsDark);
                 }
                 catch
                 {
@@ -7204,12 +7308,10 @@ namespace KeyClickOverlay
                 Topmost = true,
                 Content = outer
             };
-            ModernWpf.Controls.Primitives.WindowHelper.SetUseModernWindowStyle(dlg, true);
-            ThemeManager.SetIsThemeAware(dlg, true);
 
             // Apply acrylic/opaque surface with theme fallback (same as ShowModernInfo)
             var surfaceKeys = new[] { "LayerFillColorDefaultBrush" };
-            bool darkNow = ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark;
+            bool darkNow = AppTheme.IsDark;
             var fallbackSurface = new SolidColorBrush(darkNow ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249));
             if (fallbackSurface.CanFreeze) fallbackSurface.Freeze();
             ApplyOpaqueLayerBackground(dlg, outer, surfaceKeys, fallbackSurface);
@@ -7220,8 +7322,7 @@ namespace KeyClickOverlay
                 try
                 {
                     NativeMethods.TryApplyWin11RoundedCorners(dlg);
-                    bool isDark = ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark;
-                    NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, isDark);
+                    NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, AppTheme.IsDark);
                 }
                 catch { /* best-effort visuals */ }
             };
@@ -7277,7 +7378,7 @@ namespace KeyClickOverlay
 
             // Surface brush used for title bar + body (theme-aware, with fallback)
             var surfaceKeys = new[] { "LayerFillColorDefaultBrush" };
-            bool darkNow = ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark;
+            bool darkNow = AppTheme.IsDark;
             var fallbackSurface = new SolidColorBrush(darkNow ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249));
             if (fallbackSurface.CanFreeze) fallbackSurface.Freeze();
 
@@ -7339,7 +7440,7 @@ namespace KeyClickOverlay
             root.Children.Add(dontShow);
             root.Children.Add(buttons);
 
-            // Window shell (ModernWpf chrome + themed background)
+            // Window shell
             var dlg = new Window
             {
                 Owner = this,
@@ -7352,8 +7453,7 @@ namespace KeyClickOverlay
                 Topmost = true,
                 Content = root
             };
-            ModernWpf.Controls.Primitives.WindowHelper.SetUseModernWindowStyle(dlg, true);
-            ThemeManager.SetIsThemeAware(dlg, true);
+
             ApplyOpaqueLayerBackground(dlg, root, surfaceKeys, fallbackSurface);
 
             dlg.SourceInitialized += (_, __) =>
@@ -7361,7 +7461,7 @@ namespace KeyClickOverlay
                 try
                 {
                     NativeMethods.TryApplyWin11RoundedCorners(dlg);
-                    bool isDark = ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark;
+                    bool isDark = AppTheme.IsDark;
                     NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, isDark);
                 }
                 catch { /* best-effort visuals */ }
@@ -7468,7 +7568,7 @@ namespace KeyClickOverlay
             Action? afterSave = null)
         {
             var surfaceKeys = new[] { "LayerFillColorDefaultBrush" };
-            bool darkNow = ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark;
+            bool darkNow = AppTheme.IsDark;
             var fallbackSurface = new SolidColorBrush(darkNow ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249));
             if (fallbackSurface.CanFreeze) fallbackSurface.Freeze();
 
@@ -7523,8 +7623,6 @@ namespace KeyClickOverlay
                 Content = root
             };
 
-            WindowHelper.SetUseModernWindowStyle(dlg, true);
-            ThemeManager.SetIsThemeAware(dlg, true);
             ApplyOpaqueLayerBackground(dlg, root, surfaceKeys, fallbackSurface);
 
             dlg.SourceInitialized += (_, __) =>
@@ -7532,7 +7630,7 @@ namespace KeyClickOverlay
                 try
                 {
                     NativeMethods.TryApplyWin11RoundedCorners(dlg);
-                    bool isDark = ThemeManager.Current.ActualApplicationTheme == ApplicationTheme.Dark;
+                    bool isDark = AppTheme.IsDark;
                     NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, isDark);
                 }
                 catch { }

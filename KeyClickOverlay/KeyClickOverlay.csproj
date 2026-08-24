@@ -45,10 +45,10 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft-WindowsAPICodePack-Shell" Version="1.1.5" />
-		<PackageReference Include="ModernWpfUI" Version="0.9.6" />
 		<PackageReference Include="MouseKeyHook" Version="5.7.1" />
 		<PackageReference Include="PixiEditor.ColorPicker" Version="3.4.2.3" />
 		<PackageReference Include="SharpVectors.Wpf" Version="1.8.5" />
+		<PackageReference Include="WPF-UI" Version="4.3.0" />
 	</ItemGroup>
 
 	<!-- Generates the strongly-typed AppResources.Designer.cs from AppResources.resx (used for MouseIcon in taskbar thumbnail button). -->
