@@ -4,39 +4,50 @@
         <ResourceDictionary Source="ColorsDark.xaml" />
     </ResourceDictionary.MergedDictionaries>
 
-    <!-- TabItem style for light theme -->
+    <!-- TabItem style for dark theme -->
     <Style TargetType="TabItem">
-        <!-- Light theme text color -->
         <Setter Property="Foreground" Value="Snow" />
+
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type TabItem}">
                     <Grid>
                         <Border
-                            Name="Border"
-                            Margin="0,0,-4,0"
+                            x:Name="Border"
+                            Margin="0"
                             Background="#414141"
-                            BorderThickness="0">
-                            <ContentPresenter x:Name="ContentSite"
-                                              VerticalAlignment="Center"
-                                              HorizontalAlignment="Center"
-                                              ContentSource="Header"
-                                              Margin="12,2,12,2"
-                                              RecognizesAccessKey="True" />
+                            BorderThickness="0"
+                            CornerRadius="4,4,0,0">
+
+                            <ContentPresenter
+                                x:Name="ContentSite"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
+                                ContentSource="Header"
+                                Margin="12,2,12,2"
+                                RecognizesAccessKey="True" />
                         </Border>
                     </Grid>
+
                     <ControlTemplate.Triggers>
+
                         <!-- Selected tab -->
                         <Trigger Property="IsSelected" Value="True">
                             <Setter Property="Panel.ZIndex" Value="100" />
-                            <Setter TargetName="Border" Property="Background" Value="#555555" />
-                            <!-- Slightly darker neutral, to indicate active tab -->
+                            <Setter TargetName="Border"
+                                    Property="Background"
+                                    Value="#555555" />
                         </Trigger>
+
                         <!-- Disabled tab -->
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Border" Property="Background" Value="#414141" />
-                            <Setter Property="Foreground" Value="Snow" />
+                            <Setter TargetName="Border"
+                                    Property="Background"
+                                    Value="#414141" />
+                            <Setter Property="Foreground"
+                                    Value="Snow" />
                         </Trigger>
+
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
@@ -45,8 +56,50 @@
 
     <!-- TabControl style -->
     <Style TargetType="TabControl">
-        <!-- Accent background is preserved (Light accent from Colors.xaml expected) -->
-        <Setter Property="Background" Value="{StaticResource AccentColor}" />
-        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Background"
+                Value="{StaticResource AccentColor}" />
+
+        <Setter Property="BorderThickness"
+                Value="0" />
+
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type TabControl}">
+                    <Grid KeyboardNavigation.TabNavigation="Local">
+
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <!-- Tab headers -->
+                        <TabPanel
+                            x:Name="HeaderPanel"
+                            Grid.Row="0"
+                            Panel.ZIndex="2"
+                            HorizontalAlignment="Right"
+                            IsItemsHost="True"
+                            KeyboardNavigation.TabIndex="1"
+                            Background="Transparent" />
+
+                        <!-- Slider/content container -->
+                        <Border
+                            Grid.Row="1"
+                            Panel.ZIndex="1"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="4,0,4,4">
+
+                            <ContentPresenter
+                                x:Name="PART_SelectedContentHost"
+                                ContentSource="SelectedContent"
+                                Margin="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                        </Border>
+
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
+
 </ResourceDictionary>
