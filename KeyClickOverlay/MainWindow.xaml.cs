@@ -4955,8 +4955,8 @@ namespace KeyClickOverlay
                         }
                         else
                         {
-                            baseBrush = new SolidColorBrush(Color.FromRgb(0xC7, 0xC7, 0xC7));
-                            hoverBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0));
+                            baseBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0));
+                            hoverBrush = new SolidColorBrush(Color.FromRgb(0xC7, 0xC7, 0xC7));
                             pressedBrush = new SolidColorBrush(Color.FromRgb(0x95, 0x95, 0x95));
                             activeBrush = new SolidColorBrush(Color.FromRgb(0xC7, 0xC7, 0xC7));
                         }
