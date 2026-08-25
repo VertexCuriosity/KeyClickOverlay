@@ -18,13 +18,44 @@
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
                     <Border Background="{TemplateBinding Background}"
-                        BorderBrush="{TemplateBinding BorderBrush}"
-                        BorderThickness="{TemplateBinding BorderThickness}"
-                        CornerRadius="3.5">
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="3.5">
 
                         <ScrollViewer x:Name="PART_ContentHost" />
 
                     </Border>
+
+                    <ControlTemplate.Triggers>
+
+                        <!-- PixiEditor slider value fields -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="Width" Value="40" />
+                                <Condition Property="Height" Value="18" />
+                            </MultiTrigger.Conditions>
+
+                            <Setter TargetName="PART_ContentHost"
+                            Property="RenderTransform">
+                                <Setter.Value>
+                                    <TranslateTransform Y="-2.5" />
+                                </Setter.Value>
+                            </Setter>
+                        </MultiTrigger>
+
+                        <!-- PixiEditor Hex field -->
+                        <Trigger Property="Width" Value="70">
+                            <Setter Property="TextAlignment" Value="Center" />
+
+                            <Setter TargetName="PART_ContentHost"
+                            Property="RenderTransform">
+                                <Setter.Value>
+                                    <TranslateTransform Y="-0.5" />
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

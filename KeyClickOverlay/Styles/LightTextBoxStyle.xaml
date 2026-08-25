@@ -2,29 +2,60 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- Brushes for Light Theme -->
-    <SolidColorBrush x:Key="SelectionColor" Color="#5E9BFF" /> <!-- Win11 accent blue -->
-    <SolidColorBrush x:Key="MainColor" Color="#FFFFFF" /> <!-- default background -->
-    <SolidColorBrush x:Key="AccentColor" Color="#F9F9F9" /> <!-- idle background -->
-    <SolidColorBrush x:Key="DarkerAccentColor" Color="#F0F0F0" /> <!-- hover background -->
-    <SolidColorBrush x:Key="BrighterAccentColor" Color="#C8C8C8" /> <!-- idle border -->
-    <SolidColorBrush x:Key="AlmostLightModeAccentColor" Color="#9E9E9E" /> <!-- hover border -->
+    <SolidColorBrush x:Key="SelectionColor" Color="#5E9BFF" />
+    <SolidColorBrush x:Key="MainColor" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="AccentColor" Color="#F9F9F9" />
+    <SolidColorBrush x:Key="DarkerAccentColor" Color="#F0F0F0" />
+    <SolidColorBrush x:Key="BrighterAccentColor" Color="#C8C8C8" />
+    <SolidColorBrush x:Key="AlmostLightModeAccentColor" Color="#9E9E9E" />
 
     <Style TargetType="TextBox">
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Foreground" Value="#111111" /> <!-- near-black text -->
+        <Setter Property="Foreground" Value="#111111" />
         <Setter Property="SelectionBrush" Value="{StaticResource SelectionColor}" />
 
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
                     <Border Background="{TemplateBinding Background}"
-                        BorderBrush="{TemplateBinding BorderBrush}"
-                        BorderThickness="{TemplateBinding BorderThickness}"
-                        CornerRadius="3.5">
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="3.5">
 
-                        <ScrollViewer Name="PART_ContentHost" />
+                        <ScrollViewer x:Name="PART_ContentHost" />
 
                     </Border>
+
+                    <ControlTemplate.Triggers>
+
+                        <!-- PixiEditor slider value fields -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="Width" Value="40" />
+                                <Condition Property="Height" Value="18" />
+                            </MultiTrigger.Conditions>
+
+                            <Setter TargetName="PART_ContentHost"
+                                    Property="RenderTransform">
+                                <Setter.Value>
+                                    <TranslateTransform Y="-2.5" />
+                                </Setter.Value>
+                            </Setter>
+                        </MultiTrigger>
+
+                        <!-- PixiEditor Hex field -->
+                        <Trigger Property="Width" Value="70">
+                            <Setter Property="TextAlignment" Value="Center" />
+
+                            <Setter TargetName="PART_ContentHost"
+                                    Property="RenderTransform">
+                                <Setter.Value>
+                                    <TranslateTransform Y="-0.5" />
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
