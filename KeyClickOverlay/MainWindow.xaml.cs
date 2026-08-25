@@ -4698,6 +4698,8 @@ namespace KeyClickOverlay
             picker.ShowAlpha = showAlpha;
             picker.SelectedColor = initial;
 
+            AttachPixiComboBoxTopmostGuard(picker);
+
             bool didRevertOnCancel = false;
 
             // Live preview
@@ -4859,17 +4861,18 @@ namespace KeyClickOverlay
             PositionDialogAtCursor(dlg, outer, this);
 
             // Hand over "always-on-top" enforcement to the color dialog
-            _topmostTarget = dlg;     // dialog is the boss while open
-            this.Topmost = false;     // demote overlay
-            dlg.Topmost = true;       // promote dialog
-            ReassertTopmost();        // assert once before showing
+            _topmostTarget = dlg;
+            this.Topmost = false;
+            dlg.Topmost = true;
+            ReassertTopmost();
 
             bool? result = dlg.ShowDialog();
 
             // Hand enforcement back to the main window
-            _topmostTarget = null;    // overlay is boss again
-            dlg.Topmost = false;      // demote dialog
-            this.Topmost = true;      // promote overlay
+            _suspendTopmostForMenu = false;
+            _topmostTarget = null;
+            dlg.Topmost = false;
+            this.Topmost = true;
             ReassertTopmost();
 
             if (result != true && !didRevertOnCancel)
@@ -6830,6 +6833,40 @@ namespace KeyClickOverlay
                 if (sub is not null) return sub;
             }
             return null;
+        }
+
+        /// <summary>
+        /// Suspends the topmost heartbeat while PixiEditor's mode dropdown is open
+        /// so its separate popup window is not disturbed by z-order reassertion.
+        /// </summary>
+        private void AttachPixiComboBoxTopmostGuard(StandardColorPicker picker)
+        {
+            void Attach()
+            {
+                var modeCombo = FindDescendant<ComboBox>(picker);
+                if (modeCombo is null)
+                    return;
+
+                modeCombo.DropDownOpened += (_, __) =>
+                {
+                    _suspendTopmostForMenu = true;
+                };
+
+                modeCombo.DropDownClosed += (_, __) =>
+                {
+                    _suspendTopmostForMenu = false;
+                    ReassertTopmost();
+                };
+            }
+
+            if (picker.IsLoaded)
+            {
+                Attach();
+            }
+            else
+            {
+                picker.Loaded += (_, __) => Attach();
+            }
         }
 
         /// <summary>Hit test: is a screen pixel over a given element (used by eyedropper safety)?</summary>

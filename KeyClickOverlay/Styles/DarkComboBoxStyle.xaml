@@ -1,88 +1,142 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- Light ComboBoxItem style -->
+    <!-- Dark ComboBoxItem style -->
     <Style TargetType="ComboBoxItem">
         <Setter Property="Background" Value="#555555" />
         <Setter Property="Foreground" Value="Snow" />
+
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBoxItem">
-                    <Border Background="{TemplateBinding Background}" Name="ContentBorder">
+                    <Border x:Name="ContentBorder"
+                            Background="{TemplateBinding Background}">
+
                         <ContentPresenter Margin="5,2,0,2" />
+
                     </Border>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+
         <Style.Triggers>
-            <!-- hover item highlight -->
             <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="Background" Value="#414141" />
             </Trigger>
         </Style.Triggers>
     </Style>
 
-    <!-- ToggleButton (dropdown arrow) -->
-    <ControlTemplate x:Key="ComboBoxToggleButton" TargetType="ToggleButton">
+
+    <!-- ToggleButton for the closed ComboBox -->
+    <ControlTemplate x:Key="ComboBoxToggleButton"
+                     TargetType="ToggleButton">
+
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition />
                 <ColumnDefinition Width="20" />
             </Grid.ColumnDefinitions>
-            <Border Grid.ColumnSpan="2" Background="#555555" />
+
+            <Border x:Name="Surface"
+                    Grid.ColumnSpan="2"
+                    Background="#555555"
+                    CornerRadius="3.5" />
+
+            <!-- Thin chevron -->
             <Path x:Name="Arrow"
                   Grid.Column="1"
+                  Data="M 0,0 L 4,4 L 8,0"
+                  Stroke="#CCCCCC"
+                  StrokeThickness="1"
+                  StrokeStartLineCap="Round"
+                  StrokeEndLineCap="Round"
+                  StrokeLineJoin="Round"
+                  Fill="Transparent"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
-                  Stroke="#cccccc" Fill="#cccccc"
-                  Data="M 0,0 l 3,5 l 3,-5 Z" />
+                  Margin="0,2,0,0"
+                  IsHitTestVisible="False" />
+
         </Grid>
+
+        <ControlTemplate.Triggers>
+
+            <!-- Remove the lower corner radius while the popup is open. -->
+            <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Surface"
+                        Property="CornerRadius"
+                        Value="3.5,3.5,0,0" />
+            </Trigger>
+
+        </ControlTemplate.Triggers>
+
     </ControlTemplate>
 
-    <!-- Light ComboBox style -->
+
+    <!-- Dark ComboBox style -->
     <Style TargetType="ComboBox">
+
+        <Setter Property="Background" Value="#555555" />
+        <Setter Property="Foreground" Value="Snow" />
+
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBox">
+
                     <Grid>
-                        <!-- dropdown button -->
-                        <ToggleButton Name="ToggleButton"
+
+                        <!-- Keep PixiEditor's original dropdown behavior. -->
+                        <ToggleButton x:Name="ToggleButton"
+                                      Focusable="False"
+                                      ClickMode="Release"
                                       Template="{StaticResource ComboBoxToggleButton}"
-                                      Grid.Column="2"
-                                      Focusable="false"
                                       IsChecked="{Binding Path=IsDropDownOpen,
-                                                  Mode=TwoWay,
-                                                  RelativeSource={RelativeSource TemplatedParent}}"
-                                      ClickMode="Press" />
-                        <!-- selected item presenter -->
-                        <ContentPresenter Name="ContentSite"
+                                                          Mode=TwoWay,
+                                                          RelativeSource={RelativeSource TemplatedParent}}" />
+
+                        <!-- Keep PixiEditor's original selected-item layout. -->
+                        <ContentPresenter x:Name="ContentSite"
                                           IsHitTestVisible="False"
                                           Margin="4,2,23,2"
                                           VerticalAlignment="Center"
                                           HorizontalAlignment="Left"
-                                          Content="{TemplateBinding ComboBox.SelectionBoxItem}"
-                                          ContentTemplate="{TemplateBinding ComboBox.SelectionBoxItemTemplate}"
-                                          ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}" />
-                        <!-- dropdown popup -->
-                        <Popup Name="Popup"
+                                          Content="{TemplateBinding SelectionBoxItem}"
+                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                          ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}">
+                            <ContentPresenter.RenderTransform>
+                                <TranslateTransform Y="-1.5" />
+                            </ContentPresenter.RenderTransform>
+                        </ContentPresenter>
+
+                        <!-- Dropdown popup -->
+                        <Popup x:Name="Popup"
                                Placement="Bottom"
                                IsOpen="{TemplateBinding IsDropDownOpen}"
                                AllowsTransparency="True"
                                Focusable="False"
                                PopupAnimation="Slide">
-                            <Grid Name="DropDown"
-                                  SnapsToDevicePixels="True"
-                                  MinWidth="{TemplateBinding ActualWidth}"
-                                  MaxHeight="{TemplateBinding MaxDropDownHeight}"
-                                  Background="#555555">
-                                <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
-                            </Grid>
+
+                            <Border x:Name="DropDown"
+                                    Background="#555555"
+                                    CornerRadius="0,0,3.5,3.5"
+                                    Padding="0,0,0,3"
+                                    SnapsToDevicePixels="True"
+                                    MinWidth="{TemplateBinding ActualWidth}"
+                                    MaxHeight="{TemplateBinding MaxDropDownHeight}">
+
+                                <ItemsPresenter
+                                    KeyboardNavigation.DirectionalNavigation="Contained" />
+
+                            </Border>
+
                         </Popup>
+
                     </Grid>
+
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
-        <Setter Property="Background" Value="#555555" />
-        <Setter Property="Foreground" Value="Snow" />
+
     </Style>
+
 </ResourceDictionary>
