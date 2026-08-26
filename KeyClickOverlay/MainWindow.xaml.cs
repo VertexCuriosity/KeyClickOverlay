@@ -1213,23 +1213,6 @@ namespace KeyClickOverlay
             LoadPrefs();
             _previousPresetPath = _prefs.PreviousPresetPath;
 
-            try
-            {
-                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                string svgDir = System.IO.Path.Combine(baseDir, "assets", "svg");
-                if (!Directory.Exists(svgDir))
-                {
-                    MessageBox.Show(
-                        "The 'assets/svg' folder is missing in the installation.\n" +
-                        "Please reinstall the app.",
-                        "Missing content",
-                        MessageBoxButton.OK, MessageBoxImage.Error);
-                    Application.Current.Shutdown();
-                    return;
-                }
-            }
-            catch { /* best-effort check only */ }
-
             // ---------- Window hooks & chrome ----------
             Loaded += OnMainWindowLoaded;
 
@@ -1400,6 +1383,21 @@ namespace KeyClickOverlay
         /// <summary>Finalize window initialization once loaded (e.g., taskbar toolbar).</summary>
         private void OnMainWindowLoaded(object sender, RoutedEventArgs e)
         {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string svgDir = System.IO.Path.Combine(baseDir, "assets", "svg");
+
+            if (!Directory.Exists(svgDir))
+            {
+                ShowModernInfo(
+                    "Missing content",
+                    "The 'assets/svg' folder is missing in the installation.\nPlease reinstall the app.",
+                    ok: "OK",
+                    icon: DialogIcon.Error);
+
+                Application.Current.Shutdown();
+                return;
+            }
+
             SetupThumbnailToolbarButton();
             TryApplyLastPresetOnStartup();
             ShowFirstRunPrivacyNotice();
