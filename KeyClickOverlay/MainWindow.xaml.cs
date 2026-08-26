@@ -721,16 +721,23 @@ namespace KeyClickOverlay
             {
                 if (!File.Exists(path))
                 {
-                    MessageBox.Show("Preset file not found:\n" + path,
-                        "Preset not found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    ShowModernInfo(
+                        "Preset not found",
+                        "Preset file not found:\n" + path,
+                        ok: "OK",
+                        icon: DialogIcon.Warning);
                     return;
                 }
+
                 var json = File.ReadAllText(path);
                 var data = JsonSerializer.Deserialize<PresetData>(json, PrefsJsonOptions);
                 if (data is null)
                 {
-                    MessageBox.Show("Preset file is invalid:\n" + path,
-                        "Invalid preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    ShowModernInfo(
+                        "Invalid preset",
+                        "Preset file is invalid:\n" + path,
+                        ok: "OK",
+                        icon: DialogIcon.Warning);
                     return;
                 }
 
@@ -750,8 +757,11 @@ namespace KeyClickOverlay
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Failed to apply preset:\n" + ex.Message,
-                    "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowModernInfo(
+                    "Preset error",
+                    "Failed to apply preset:\n" + ex.Message,
+                    ok: "OK",
+                    icon: DialogIcon.Error);
             }
         }
 
@@ -805,8 +815,11 @@ namespace KeyClickOverlay
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Failed to save preset:\n" + ex.Message, "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowModernInfo(
+                    "Preset error",
+                    "Failed to save preset:\n" + ex.Message,
+                    ok: "OK",
+                    icon: DialogIcon.Error);
             }
         }
 
@@ -2698,7 +2711,7 @@ namespace KeyClickOverlay
 
             var changeClearOverlayHotkeyItem = new MenuItem
             {
-                Header = CreateShortcutMenuHeader("Clear overlay shortcut", clearOverlayShortcutText),
+                Header = CreateShortcutMenuHeader("Clear KeyClickOverlay shortcut", clearOverlayShortcutText),
                 ToolTip =
                     "Removes all currently displayed keys.\n\n" +
                     "Click to change this shortcut."
@@ -2707,7 +2720,7 @@ namespace KeyClickOverlay
             var changePauseOverlayHotkeyItem = new MenuItem
             {
                 Header = CreateShortcutMenuHeader(
-                    "Pause overlay shortcut",
+                    "Pause KeyClickOverlay shortcut",
                     pauseOverlayShortcutText),
 
                 ToolTip =
@@ -8005,107 +8018,176 @@ namespace KeyClickOverlay
         {
             if (_prefs.HideTransparentInfo) return true;
 
-            // Surface brush used for title bar + body (theme-aware, with fallback)
-            var surfaceKeys = new[] { "LayerFillColorDefaultBrush" };
-            bool darkNow = AppTheme.IsDark;
-            var fallbackSurface = new SolidColorBrush(darkNow ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249));
-            if (fallbackSurface.CanFreeze) fallbackSurface.Freeze();
-
-            // Content
-            var root = new Grid { Margin = new Thickness(0), SnapsToDevicePixels = true, UseLayoutRounding = true };
-            TextOptions.SetTextRenderingMode(root, TextRenderingMode.ClearType);
-            TextOptions.SetTextFormattingMode(root, TextFormattingMode.Display);
-
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-            var title = new TextBlock
+            // ---------- Dialog surface ----------
+            SolidColorBrush CreateFallbackSurface()
             {
-                Text = "Transparent-mode",
-                FontSize = 18,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(16, 16, 16, 8)
+                var brush = new SolidColorBrush(
+                    AppTheme.IsDark
+                        ? Color.FromRgb(43, 43, 43)
+                        : Color.FromRgb(249, 249, 249));
+
+                if (brush.CanFreeze)
+                    brush.Freeze();
+
+                return brush;
+            }
+
+            var fallbackSurface = CreateFallbackSurface();
+
+            // ---------- WPF-UI dialog window ----------
+            var dlg = CreateDialogWindow(
+                "Transparent-mode",
+                fallbackSurface,
+                centerOnScreen: true);
+
+            dlg.Width = 500;
+            dlg.MinWidth = 500;
+            dlg.MaxWidth = 500;
+
+            dlg.MinHeight = 0;
+            dlg.SizeToContent = SizeToContent.Height;
+
+            // ---------- Main content ----------
+            var outerGrid = new Grid
+            {
+                Background = fallbackSurface
             };
-            Grid.SetRow(title, 0);
+
+            outerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            outerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var contentGrid = new Grid
+            {
+                Margin = new Thickness(20, 18, 20, 8)
+            };
+
+            contentGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            contentGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             var body = new TextBlock
             {
                 TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 420,
-                Margin = new Thickness(16, 0, 16, 12)
+                MaxWidth = 440,
+                FontSize = 14
             };
+
             body.Inlines.Add(new Run("When enabled, the window ignores mouse input. "));
             body.Inlines.Add(new Run("To turn it off, press "));
             body.Inlines.Add(new Run(GetTransparentHotkeyLabel()) { FontWeight = FontWeights.SemiBold });
             body.Inlines.Add(new Run(" or click the "));
             body.Inlines.Add(new Run("“Transparent-mode”") { FontStyle = FontStyles.Italic });
             body.Inlines.Add(new Run(" button on the app’s taskbar icon."));
-            Grid.SetRow(body, 1);
 
             var dontShow = new CheckBox
             {
                 Content = "Don't show this again",
-                Margin = new Thickness(16, 0, 16, 12)
+                Margin = new Thickness(0, 14, 0, 0)
             };
-            Grid.SetRow(dontShow, 2);
 
-            var ok = new Button { Content = "OK", MinWidth = 88, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
-            var cancel = new Button { Content = "Cancel", MinWidth = 88, IsCancel = true };
+            Grid.SetRow(body, 0);
+            Grid.SetRow(dontShow, 1);
 
-            var buttons = new StackPanel
+            contentGrid.Children.Add(body);
+            contentGrid.Children.Add(dontShow);
+
+            Grid.SetRow(contentGrid, 0);
+            outerGrid.Children.Add(contentGrid);
+
+            // ---------- Button row ----------
+            var buttonPanel = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Right,
-                Margin = new Thickness(16, 0, 16, 16)
+                Margin = new Thickness(20, 8, 20, 16)
             };
-            buttons.Children.Add(ok);
-            buttons.Children.Add(cancel);
-            Grid.SetRow(buttons, 3);
 
-            root.Children.Add(title);
-            root.Children.Add(body);
-            root.Children.Add(dontShow);
-            root.Children.Add(buttons);
-
-            // Window shell
-            var dlg = new Window
+            var ok = new Button
             {
-                Owner = this,
-                WindowStartupLocation = WindowStartupLocation.Manual,
-                ShowInTaskbar = false,
-                ResizeMode = ResizeMode.NoResize,
-                SizeToContent = SizeToContent.WidthAndHeight,
-                Title = "KeyClickOverlay",
-                WindowStyle = WindowStyle.None,
-                Topmost = true,
-                Content = root
+                Content = "OK",
+                MinWidth = 88,
+                Height = 34,
+                Margin = new Thickness(0, 0, 8, 0),
+                IsDefault = true
             };
 
-            ApplyOpaqueLayerBackground(dlg, root, surfaceKeys, fallbackSurface);
-
-            dlg.SourceInitialized += (_, __) =>
+            var cancel = new Button
             {
-                try
-                {
-                    NativeMethods.TryApplyWin11RoundedCorners(dlg);
-                    bool isDark = AppTheme.IsDark;
-                    NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, isDark);
-                }
-                catch { /* best-effort visuals */ }
+                Content = "Cancel",
+                MinWidth = 88,
+                Height = 34,
+                IsCancel = true
             };
 
-            bool? result = null;
-            ok.Click += (_, __) => { result = true; dlg.Close(); };
-            cancel.Click += (_, __) => { result = false; dlg.Close(); };
+            buttonPanel.Children.Add(ok);
+            buttonPanel.Children.Add(cancel);
+
+            Grid.SetRow(buttonPanel, 1);
+            outerGrid.Children.Add(buttonPanel);
+
+            // ---------- Shared WPF-UI shell ----------
+            var (dialogRoot, titleBar) = CreateDialogRoot(
+                dlg,
+                outerGrid,
+                fallbackSurface);
+
+            // ---------- Theme switching ----------
+            void OnThemeChanged(object? sender, EventArgs e)
+            {
+                var surface = CreateFallbackSurface();
+
+                ApplyWpfUiDialogTheme(dlg);
+
+                NativeMethods.TryApplyImmersiveDarkTitleBar(
+                    dlg,
+                    AppTheme.IsDark);
+
+                dlg.Background = surface;
+                dialogRoot.Background = surface;
+                titleBar.Background = surface;
+                outerGrid.Background = surface;
+            }
+
+            AppTheme.Changed += OnThemeChanged;
+
+            dlg.Closed += (_, __) =>
+            {
+                AppTheme.Changed -= OnThemeChanged;
+            };
+
+            // ---------- Result ----------
+            bool result = false;
+
+            ok.Click += (_, __) =>
+            {
+                result = true;
+                dlg.Close();
+            };
+
+            cancel.Click += (_, __) =>
+            {
+                result = false;
+                dlg.Close();
+            };
 
             dlg.Loaded += (_, __) => ok.Focus();
 
-            // Place near cursor
-            PositionDialogAtCursor(dlg, root, this);
+            // ---------- Topmost handling ----------
+            _topmostTarget = dlg;
+
+            this.Topmost = false;
+            dlg.Topmost = true;
+
+            ReassertTopmost();
 
             dlg.ShowDialog();
+
+            // ---------- Restore overlay ----------
+            _topmostTarget = null;
+
+            dlg.Topmost = false;
+            this.Topmost = true;
+
+            ReassertTopmost();
 
             if (dontShow.IsChecked == true)
             {
@@ -8113,7 +8195,7 @@ namespace KeyClickOverlay
                 SavePrefs();
             }
 
-            return result == true;
+            return result;
         }
 
 
@@ -8163,7 +8245,7 @@ namespace KeyClickOverlay
         private void ChangeClearOverlayHotkeyViaDialog()
         {
             ChangeShortcutViaDialog(
-                "Clear overlay shortcut",
+                "Clear KeyClickOverlay shortcut",
                 GetClearOverlayHotkeyLabel(),
                 (key, mods) =>
                 {
@@ -8196,132 +8278,164 @@ namespace KeyClickOverlay
             Action<Keys, ModifierKeys> applyShortcut,
             Action? afterSave = null)
         {
-            var surfaceKeys = new[] { "LayerFillColorDefaultBrush" };
-            bool darkNow = AppTheme.IsDark;
-            var fallbackSurface = new SolidColorBrush(darkNow ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249));
-            if (fallbackSurface.CanFreeze) fallbackSurface.Freeze();
-
-            var root = new Grid { Margin = new Thickness(0), SnapsToDevicePixels = true, UseLayoutRounding = true };
-            TextOptions.SetTextRenderingMode(root, TextRenderingMode.ClearType);
-            TextOptions.SetTextFormattingMode(root, TextFormattingMode.Display);
-
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-            var title = new TextBlock
+            // ---------- Dialog surface ----------
+            SolidColorBrush CreateFallbackSurface()
             {
-                Text = "Change " + titleText,
-                FontSize = 18,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(16, 16, 16, 8)
+                var brush = new SolidColorBrush(
+                    AppTheme.IsDark
+                        ? Color.FromRgb(43, 43, 43)
+                        : Color.FromRgb(249, 249, 249));
+
+                if (brush.CanFreeze)
+                    brush.Freeze();
+
+                return brush;
+            }
+
+            var fallbackSurface = CreateFallbackSurface();
+
+            // ---------- WPF-UI dialog window ----------
+            var dlg = CreateDialogWindow(
+                titleText,
+                fallbackSurface,
+                centerOnScreen: true);
+
+            dlg.Width = 440;
+            dlg.MinWidth = 440;
+            dlg.MaxWidth = 440;
+
+            dlg.MinHeight = 0;
+            dlg.SizeToContent = SizeToContent.Height;
+
+            // ---------- Content ----------
+            var contentGrid = new Grid
+            {
+                Background = fallbackSurface,
+                Margin = new Thickness(20, 18, 20, 28)
             };
-            Grid.SetRow(title, 0);
+
+            contentGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            contentGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             var body = new TextBlock
             {
+                Text = "Press your new shortcut (e.g. Ctrl+Alt+R or Shift+S).\n" +
+                       "Use at least one of Ctrl, Shift or Alt.\n" +
+                       "Press Esc to cancel.",
                 TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 420,
-                Margin = new Thickness(16, 0, 16, 8),
-                Text = "Press your new shortcut (e.g. Ctrl+Alt+R or Shift+S).\nUse at least one of Ctrl, Shift or Alt.\nPress Esc to cancel."
+                MaxWidth = 400
             };
-            Grid.SetRow(body, 1);
 
             var current = new TextBlock
             {
                 Text = "Current shortcut: " + currentShortcutLabel,
                 FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(16, 0, 16, 16)
+                Margin = new Thickness(0, 12, 0, 0)
             };
-            Grid.SetRow(current, 2);
 
-            root.Children.Add(title);
-            root.Children.Add(body);
-            root.Children.Add(current);
+            Grid.SetRow(body, 0);
+            Grid.SetRow(current, 1);
 
-            var dlg = new Window
+            contentGrid.Children.Add(body);
+            contentGrid.Children.Add(current);
+
+            // ---------- Shared WPF-UI shell ----------
+            var (dialogRoot, titleBar) = CreateDialogRoot(
+                dlg,
+                contentGrid,
+                fallbackSurface);
+
+            // ---------- Theme switching ----------
+            void OnThemeChanged(object? sender, EventArgs e)
             {
-                Owner = this,
-                WindowStartupLocation = WindowStartupLocation.CenterScreen,
-                ShowInTaskbar = false,
-                ResizeMode = ResizeMode.NoResize,
-                SizeToContent = SizeToContent.WidthAndHeight,
-                Title = "KeyClickOverlay",
-                WindowStyle = WindowStyle.None,
-                Topmost = true,
-                Content = root
-            };
+                var surface = CreateFallbackSurface();
 
-            ApplyOpaqueLayerBackground(dlg, root, surfaceKeys, fallbackSurface);
+                ApplyWpfUiDialogTheme(dlg);
 
-            dlg.SourceInitialized += (_, __) =>
+                NativeMethods.TryApplyImmersiveDarkTitleBar(
+                    dlg,
+                    AppTheme.IsDark);
+
+                dlg.Background = surface;
+                dialogRoot.Background = surface;
+                titleBar.Background = surface;
+                contentGrid.Background = surface;
+            }
+
+            AppTheme.Changed += OnThemeChanged;
+
+            dlg.Closed += (_, __) =>
             {
-                try
-                {
-                    NativeMethods.TryApplyWin11RoundedCorners(dlg);
-                    bool isDark = AppTheme.IsDark;
-                    NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, isDark);
-                }
-                catch { }
+                AppTheme.Changed -= OnThemeChanged;
             };
 
+            // ---------- Shortcut capture ----------
             Keys pickedKey = Keys.None;
             ModifierKeys pickedMods = ModifierKeys.None;
 
-            dlg.PreviewKeyDown += (s, e) =>
+            dlg.PreviewKeyDown += (_, e) =>
             {
                 if (e.Key == Key.Escape)
                 {
-                    dlg.DialogResult = false;
-                    dlg.Close();
                     e.Handled = true;
+                    dlg.Close();
                     return;
                 }
 
-                Key k = e.Key == Key.System ? e.SystemKey : e.Key;
+                Key key = e.Key == Key.System ? e.SystemKey : e.Key;
 
-                if (k is Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift or Key.LeftAlt or Key.RightAlt)
+                if (key is Key.LeftCtrl or Key.RightCtrl or
+                    Key.LeftShift or Key.RightShift or
+                    Key.LeftAlt or Key.RightAlt or
+                    Key.LWin or Key.RWin)
                 {
                     e.Handled = true;
                     return;
                 }
 
-                var mods = Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift | ModifierKeys.Alt);
+                ModifierKeys mods =
+                    Keyboard.Modifiers &
+                    (ModifierKeys.Control | ModifierKeys.Shift | ModifierKeys.Alt);
+
                 if (mods == ModifierKeys.None)
                 {
-                    current.Text = "Please hold at least Ctrl, Shift or Alt while pressing a key.";
                     e.Handled = true;
                     return;
                 }
 
-                int vk = KeyInterop.VirtualKeyFromKey(k);
-                pickedKey = (Keys)vk;
+                pickedKey = (Keys)KeyInterop.VirtualKeyFromKey(key);
                 pickedMods = mods;
 
+                e.Handled = true;
                 dlg.DialogResult = true;
                 dlg.Close();
-                e.Handled = true;
             };
 
-            dlg.Loaded += (_, __) =>
-            {
-                dlg.Activate();
-            };
+            // ---------- Topmost handling ----------
+            _topmostTarget = dlg;
 
-            bool? result = dlg.ShowDialog();
+            this.Topmost = false;
+            dlg.Topmost = true;
 
-            if (result == true && pickedKey != Keys.None && pickedMods != ModifierKeys.None)
-            {
-                applyShortcut(pickedKey, pickedMods);
-                SavePrefs();
-                afterSave?.Invoke();
+            ReassertTopmost();
 
-                ShowModernInfoAuto(
-                    "Shortcut changed",
-                    $"{titleText} is now {FormatShortcutLabel(pickedMods, pickedKey)}.",
-                    milliseconds: 2500,
-                    icon: DialogIcon.Success);
-            }
+            dlg.ShowDialog();
+
+            // ---------- Restore overlay ----------
+            _topmostTarget = null;
+
+            dlg.Topmost = false;
+            this.Topmost = true;
+
+            ReassertTopmost();
+
+            // ---------- Save shortcut ----------
+            if (pickedKey == Keys.None || pickedMods == ModifierKeys.None)
+                return;
+
+            applyShortcut(pickedKey, pickedMods);
+            SavePrefs();
+            afterSave?.Invoke();
         }
 
         /// <summary>Connect global mouse/keyboard hooks and timers that drive the overlay.</summary>
