@@ -449,6 +449,7 @@ namespace KeyClickOverlay
 
         private const int MaxPresets = 10;                // UI cap for quick-access list
         private const string ActivePresetTag = "ACTIVE_PRESET"; // row Tag marker in menu
+        private const string RenamingPresetTag = "RENAMING_PRESET";
 
         // The preset that was active immediately before the current one.
         private string? _previousPresetPath;
@@ -1925,8 +1926,20 @@ namespace KeyClickOverlay
                     // Guard so Commit/Cancel only run once
                     bool finished = false;
 
-                    // Captured references declared first so local functions can use them
-                    MenuItem? ownerRow = null;
+                    // Parent MenuItem that owns this preset row.
+                    MenuItem? ownerRow = FindAncestor<MenuItem>(row);
+
+                    // Remember whether this was the active preset, because Tag is also
+                    // used for the active-preset highlight.
+                    object? originalTag = ownerRow?.Tag;
+
+                    if (ownerRow != null)
+                    {
+                        ownerRow.StaysOpenOnClick = true;
+                        ownerRow.Tag = RenamingPresetTag;
+                    }
+
+                    // Captured reference declared first so local functions can use it.
                     MouseButtonEventHandler? commitOnMenuClick = null;
 
                     // While renaming: keep the keyboard focus anchored to the editor
@@ -1955,7 +1968,8 @@ namespace KeyClickOverlay
 
                     void SafeSwapBackEditorToLabel()
                     {
-                        // Only swap if the editor is still in the row (avoids ArgumentOutOfRangeException)
+                        // Only swap if the editor is still in the row
+                        // (avoids ArgumentOutOfRangeException).
                         int idx = row.Children.IndexOf(editorRoot);
 
                         if (idx >= 0)
@@ -1963,6 +1977,13 @@ namespace KeyClickOverlay
                             row.Children.RemoveAt(idx);
                             row.Children.Insert(idx, label);
                             label.Visibility = Visibility.Visible;
+                        }
+
+                        // Restore normal row behavior and its original active/non-active state.
+                        if (ownerRow != null)
+                        {
+                            ownerRow.StaysOpenOnClick = false;
+                            ownerRow.Tag = originalTag;
                         }
                     }
 
@@ -1985,8 +2006,6 @@ namespace KeyClickOverlay
                         if (finished) return;
                         finished = true;
 
-                        if (ownerRow != null) ownerRow.StaysOpenOnClick = false;
-
                         // Keep submenu visible if menu is still open
                         savePresetMenu.IsSubmenuOpen = true;
 
@@ -2001,7 +2020,6 @@ namespace KeyClickOverlay
                         if (finished) return;
                         finished = true;
 
-                        if (ownerRow != null) ownerRow.StaysOpenOnClick = false;
                         DetachTempHandlers();
 
                         string proposed = editor.Text?.Trim() ?? string.Empty;
@@ -2036,16 +2054,21 @@ namespace KeyClickOverlay
                             ShowModernInfo("Rename failed", ex.Message, ok: "OK", icon: DialogIcon.Error);
                         }
 
-                        // Rebuild list to reflect new name; keep submenu open so highlight is visible
+                        // Restore the temporary rename state before rebuilding the row.
+                        if (ownerRow != null)
+                        {
+                            ownerRow.StaysOpenOnClick = false;
+                            ownerRow.Tag = originalTag;
+                        }
+
+                        // Rebuild list to reflect new name; keep submenu open so highlight is visible.
                         RebuildPresetList();
                         savePresetMenu.IsSubmenuOpen = true;
                         renamingNow = false;
                     }
 
-                    // Activation glue
-                    ownerRow = FindAncestor<MenuItem>(row);
-                    if (ownerRow != null) ownerRow.StaysOpenOnClick = true;    // row stays open while renaming
-                    savePresetMenu.IsSubmenuOpen = true;                       // keep parent submenu open
+                    // Keep parent submenu open while renaming.
+                    savePresetMenu.IsSubmenuOpen = true;
 
                     // Click-away inside the menu (but not in the editor) => commit (matches "Add preset" UX)
                     commitOnMenuClick = (_, e) =>
@@ -3342,6 +3365,15 @@ namespace KeyClickOverlay
             if (outline.CanFreeze)
                 outline.Freeze();
 
+            // Text selection colors
+            var selectionBg = SolidBrush(AppTheme.IsLight ? "#FF9A9A9A" : "#FF606060");
+            var selectionFg = SolidBrush(AppTheme.IsLight ? "#FF111111" : "#FFFFFFFF");
+
+            var textBoxStyle = new Style(typeof(TextBox));
+            textBoxStyle.Setters.Add(new Setter(TextBoxBase.SelectionBrushProperty, selectionBg));
+            textBoxStyle.Setters.Add(new Setter(TextBoxBase.SelectionTextBrushProperty, selectionFg));
+            cm.Resources[typeof(TextBox)] = textBoxStyle;
+
             // ---------- Context-menu slider resources ----------
 
             // Inactive track.
@@ -3638,6 +3670,11 @@ namespace KeyClickOverlay
             tActivePreset.Setters.Add(new Setter(Border.BackgroundProperty, hoverBg, "Outer"));
             tActivePreset.Setters.Add(new Setter(Control.FontWeightProperty, FontWeights.SemiBold));
             tpl.Triggers.Add(tActivePreset);
+
+            // Suppress row hover while renaming a preset
+            var tRenamingPreset = new Trigger { Property = FrameworkElement.TagProperty, Value = RenamingPresetTag };
+            tRenamingPreset.Setters.Add(new Setter(Border.BackgroundProperty, Brushes.Transparent, "Outer"));
+            tpl.Triggers.Add(tRenamingPreset);
 
             // Submenu popup (same chrome as main)
             var rootContainer = new FrameworkElementFactory(typeof(Grid));
