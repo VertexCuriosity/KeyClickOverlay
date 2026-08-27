@@ -1,9 +1,4 @@
-﻿using ColorPicker;
-using Gma.System.MouseKeyHook;
-using Microsoft.WindowsAPICodePack.Taskbar;
-using SharpVectors.Converters;
-using SharpVectors.Renderers.Wpf;
-using System.Collections;
+﻿using System.Collections;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -18,9 +13,15 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
-using System.Windows.Media.Media3D;
 using System.Windows.Threading;
+
+using ColorPicker;
+using Gma.System.MouseKeyHook;
+using Microsoft.WindowsAPICodePack.Taskbar;
+using SharpVectors.Converters;
+using SharpVectors.Renderers.Wpf;
 using Wpf.Ui.Markup;
+
 using FluentWindow = Wpf.Ui.Controls.FluentWindow;
 using Icon = System.Drawing.Icon;
 using IOPath = System.IO.Path;
@@ -29,7 +30,6 @@ using MouseButtons = System.Windows.Forms.MouseButtons;
 using WindowBackdropType = Wpf.Ui.Controls.WindowBackdropType;
 using WinForms = System.Windows.Forms;
 using WpfTitleBar = Wpf.Ui.Controls.TitleBar;
-
 
 
 namespace KeyClickOverlay
@@ -160,10 +160,10 @@ namespace KeyClickOverlay
         private sealed class UserPrefs
         {
             [JsonPropertyName("hideTransparentInfo")]
-            public bool HideTransparentInfo { get; set; } // hide the transparent-to-mouse mode info popup when true 
+            public bool HideTransparentInfo { get; set; } // hide the Transparent-mode info popup when true
 
             [JsonPropertyName("privacyNoticeShown")]
-            public bool PrivacyNoticeShown { get; set; } // hide the Privacy Notification info popup when true 
+            public bool PrivacyNoticeShown { get; set; } // true after the first-run privacy notice is acknowledged 
 
             [JsonPropertyName("lastPresetPath")]
             public string? LastPresetPath { get; set; } // absolute path to the last used preset JSON file, or null if none
@@ -322,7 +322,7 @@ namespace KeyClickOverlay
             return mods;
         }
 
-        /// <summary>Update all UI text that shows the transparent shortcut (tooltips, etc.)</summary>
+        /// <summary>Update taskbar and context-menu shortcut labels.</summary>
         private void RefreshTaskbarHotkeyUiLabels()
         {
             string transparentLabel = GetTransparentHotkeyLabel();
@@ -1191,8 +1191,8 @@ namespace KeyClickOverlay
             Closed += MainWindow_Closed;
 
             // Minimum working size for overlay (prevents unusably tiny windows)
-            this.MinWidth = 80;   // minimum usable overlay width
-            this.MinHeight = 45;  // minimum usable overlay height
+            this.MinWidth = 80;
+            this.MinHeight = 45;
 
             if (_fullyTransparentBrush is SolidColorBrush sc && sc.CanFreeze) sc.Freeze();
             WindowStartupLocation = WindowStartupLocation.Manual;
