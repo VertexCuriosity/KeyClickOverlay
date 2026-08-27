@@ -67,6 +67,7 @@ namespace KeyClickOverlay
         private bool _transparentToMouse = false;
         private MenuItem? _transparentMenuItem;       // "Toggle Transparent-mode" menu item
         private ThumbnailToolBarButton? _transparentThumbButton;
+        private ThumbnailToolBarButton? _pauseThumbButton;
         private ThumbnailToolBarButton? _clearThumbButton;
         private bool _overlayPaused = false;
         private bool _mouseInitialized = false;
@@ -337,10 +338,32 @@ namespace KeyClickOverlay
                 _transparentThumbButton.Tooltip = $"Transparent-mode ({transparentLabel})";
             }
 
+            if (_pauseThumbButton != null)
+            {
+                _pauseThumbButton.Tooltip = _overlayPaused
+                    ? $"Resume KeyClickOverlay ({GetPauseOverlayHotkeyLabel()})"
+                    : $"Pause KeyClickOverlay ({GetPauseOverlayHotkeyLabel()})";
+            }
+
             if (_clearThumbButton != null)
             {
                 _clearThumbButton.Tooltip = $"Clear keys ({GetClearOverlayHotkeyLabel()})";
             }
+        }
+
+        /// <summary>Update the taskbar Pause/Play button to match the current overlay state.</summary>
+        private void RefreshPauseTaskbarButton()
+        {
+            if (_pauseThumbButton == null)
+                return;
+
+            _pauseThumbButton.Icon = _overlayPaused
+                ? AppResources.PlayIcon
+                : AppResources.PauseIcon;
+
+            _pauseThumbButton.Tooltip = _overlayPaused
+                ? $"Resume KeyClickOverlay ({GetPauseOverlayHotkeyLabel()})"
+                : $"Pause KeyClickOverlay ({GetPauseOverlayHotkeyLabel()})";
         }
 
         /// <summary>Full path to prefs.json in AppData</summary>
@@ -1361,7 +1384,7 @@ namespace KeyClickOverlay
             ShowFirstRunPrivacyNotice();
         }
 
-        /// <summary>Add a Windows taskbar thumbnail toolbar button to toggle mouse transparency.</summary>
+        /// <summary>Add the Windows taskbar thumbnail toolbar buttons.</summary>
         private void SetupThumbnailToolbarButton()
         {
             if (!TaskbarManager.IsPlatformSupported) return;
@@ -1376,6 +1399,16 @@ namespace KeyClickOverlay
                 // Remember it so we can update the tooltip when the shortcut gets changed
                 _transparentThumbButton = transparentButton;
 
+                // Pause/resume button
+                Icon pauseIcon = AppResources.PauseIcon ?? throw new InvalidOperationException("PauseIcon missing.");
+                var pauseButton = new ThumbnailToolBarButton(
+                    pauseIcon,
+                    $"Pause KeyClickOverlay ({GetPauseOverlayHotkeyLabel()})");
+
+                pauseButton.Click += (_, _) => SetOverlayPaused(!_overlayPaused);
+
+                _pauseThumbButton = pauseButton;
+
                 // Clear keys button (ClearKey icon)
                 Icon clearIcon = AppResources.ClearKey ?? throw new InvalidOperationException("ClearKey icon missing.");
                 var clearButton = new ThumbnailToolBarButton(
@@ -1386,11 +1419,11 @@ namespace KeyClickOverlay
 
                 _clearThumbButton = clearButton;
 
-                // Attach both buttons to this window’s taskbar thumbnail
+                // Attach the buttons to this window’s taskbar thumbnail
                 var handle = new WindowInteropHelper(this).Handle;
                 if (handle == IntPtr.Zero) throw new InvalidOperationException("Window handle not ready.");
 
-                TaskbarManager.Instance.ThumbnailToolBars.AddButtons(handle, transparentButton, clearButton);
+                TaskbarManager.Instance.ThumbnailToolBars.AddButtons(handle, transparentButton, pauseButton, clearButton);
             }
             catch (Exception ex)
             {
@@ -6498,6 +6531,7 @@ namespace KeyClickOverlay
                 return;
 
             _overlayPaused = paused;
+            RefreshPauseTaskbarButton();
 
             if (paused)
             {
@@ -8112,6 +8146,7 @@ namespace KeyClickOverlay
                         // with a Play icon in its pressed state.
                         _overlayPaused = false;
                         ReplacePauseWithPressedPlayKey();
+                        RefreshPauseTaskbarButton();
 
                         ShowModernInfoAuto("Overlay resumed", "Mouse and keyboard input display has resumed.", milliseconds: 1500, icon: DialogIcon.Info);
                     }

@@ -124,4 +124,10 @@
   <data name="MouseIcon" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>MouseIcon.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
+  <data name="PauseIcon" type="System.Resources.ResXFileRef, System.Windows.Forms">
+	  <value>pause.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="PlayIcon" type="System.Resources.ResXFileRef, System.Windows.Forms">
+	  <value>play.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>	
 </root>
