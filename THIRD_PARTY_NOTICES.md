@@ -15,10 +15,10 @@ The original license text for each direct dependency is included in the [`third_
 | Package | License | License File |
 |----------|---------|--------------|
 | Microsoft.WindowsAPICodePack.Shell | Microsoft Software License | [`Microsoft-WindowsAPICodePack.txt`](third_party_licenses/Microsoft-WindowsAPICodePack.txt) |
-| ModernWpfUI | MIT | [`ModernWpfUI.txt`](third_party_licenses/ModernWpfUI.txt) |
 | MouseKeyHook | MIT | [`MouseKeyHook.txt`](third_party_licenses/MouseKeyHook.txt) |
 | PixiEditor.ColorPicker | MIT | [`PixiEditor.ColorPicker.txt`](third_party_licenses/PixiEditor.ColorPicker.txt) |
 | SharpVectors.Wpf | BSD 3-Clause | [`SharpVectors.Wpf.txt`](third_party_licenses/SharpVectors.Wpf.txt) |
+| WPF-UI | MIT | [`WPF-UI.txt`](third_party_licenses/WPF-UI.txt) |
 
 ---
 
@@ -29,8 +29,9 @@ The following packages are installed automatically through NuGet as dependencies
 | Package | Notes |
 |----------|-------|
 | Microsoft.WindowsAPICodePack.Core | Part of the Windows API Code Pack project. Covered by the Windows API Code Pack license. |
-| Microsoft.Xaml.Behaviors.Wpf | Dependency of ModernWpfUI. Licensed under the MIT License. |
+| Microsoft.Xaml.Behaviors.Wpf | Dependency of PixiEditor.ColorPicker. Licensed under the MIT License. |
 | PixiEditor.ColorPicker.Models | Part of the PixiEditor.ColorPicker project. Covered by the PixiEditor.ColorPicker license. |
+| WPF-UI.Abstractions | Part of the WPF-UI project. Covered by the WPF-UI license. |
 
 ---
 
