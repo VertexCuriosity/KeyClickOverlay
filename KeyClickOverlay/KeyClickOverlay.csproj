@@ -3,31 +3,16 @@
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
 		<TargetFramework>net10.0-windows</TargetFramework>
-		<UseWPF>true</UseWPF>
-
-		<!-- Application information -->
-		<Version>1.0.0</Version>
-		<AssemblyTitle>Customizable keyboard and mouse input overlay.</AssemblyTitle>
-		<Product>KeyClickOverlay</Product>
-		<Description>Customizable keyboard and mouse input overlay.</Description>
-		<Company>VertexCuriosity</Company>
-		<Authors>Suus | VertexCuriosity</Authors>
-		<Copyright>Copyright © 2026 VertexCuriosity</Copyright>
-
-		<!-- Prevent Git commit hash from being appended to the product version -->
-		<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
-
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
-		<LangVersion>12.0</LangVersion>
-		<!-- This sets the app icon -->
+		<UseWPF>true</UseWPF>
 		<ApplicationIcon>KeyClickOverlay.ico</ApplicationIcon>
 		<ApplicationManifest>app.manifest</ApplicationManifest>
 
 		<EnableLibraryImportGenerator>true</EnableLibraryImportGenerator>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
-		<Platforms>AnyCPU;x64</Platforms>
+		<Platforms>x64</Platforms>
 
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<SelfContained>true</SelfContained>
