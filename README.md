@@ -1,3 +1,5 @@
+![KeyClickOverlay](screenshots/keyclickoverlay-hero.png)
+
 # KeyClickOverlay
 
 *A small Windows app that displays keyboard and mouse input on screen with a flexible UI that can be freely positioned, resized, and customized.*
