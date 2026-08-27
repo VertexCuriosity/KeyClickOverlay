@@ -56,19 +56,19 @@ namespace KeyClickOverlay
         private const double FrameTotalInset = 2;             // keep child inset stable across modes
         private const double StandardGapFactor = 0.30;        // left gap between all keys
         private const double MainMenuWidth = 285.0;           // fixed width of the main context menu
-        private const int ToolTipDelay = 800;
-        private const int ToolTipDuration = 20000;
+        private const int ToolTipDelay = 800;                 // delay before a tooltip appears
+        private const int ToolTipDuration = 20000;            // how long a tooltip remains visible
 
 
         // === State ===
         private readonly Brush _fullyTransparentBrush = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
 
         private bool _uiBuilt;                        // ensure SetupOverlayUI() runs only once
-        private bool _transparentToMouse = false;     // current transparent-to-mouse mode
+        private bool _transparentToMouse = false;
         private MenuItem? _transparentMenuItem;       // "Toggle Transparent-mode" menu item
-        private ThumbnailToolBarButton? _transparentThumbButton; // taskbar thumbnail button
-        private ThumbnailToolBarButton? _clearThumbButton;       // taskbar clear button        
-        private bool _overlayPaused = false;          // pause KeyClickOverlay
+        private ThumbnailToolBarButton? _transparentThumbButton;
+        private ThumbnailToolBarButton? _clearThumbButton;
+        private bool _overlayPaused = false;
         private bool _mouseInitialized = false;
         private bool _mouseEnabled = true;            // master switch for mouse visibility + input
         private bool _syncingMenu = false;            // suppress menu handlers while syncing IsChecked
@@ -85,7 +85,7 @@ namespace KeyClickOverlay
         private readonly DispatcherTimer _topmostPulse = new();                     // heartbeat that re-asserts TopMost
         private Color _backgroundColorRgb = Color.FromRgb(63, 63, 63);              // background base color #3F3F3F (no alpha)
         private double _backgroundOpacity = 112.0 / 255.0;                          // default background opacity (~44%)
-        private Color _mouseColorRgb = Color.FromRgb(0xE5, 0xE5, 0xE5);                // default mouse color (#e5e5e5)
+        private Color _mouseColorRgb = Color.FromRgb(0xE5, 0xE5, 0xE5);              // default mouse color (#e5e5e5)
         private Color _fontColorRgb = Color.FromRgb(0xE5, 0xE5, 0xE5);              // default key/text/icon color (#e5e5e5)
         private Color _keyFillRgb = Color.FromRgb(0x28, 0x28, 0x28);                // default key tile color (#282828)
         private readonly SolidColorBrush _keyFillBrush = new(Color.FromRgb(0x28, 0x28, 0x28)); // mutable; DO NOT Freeze
@@ -117,13 +117,14 @@ namespace KeyClickOverlay
         private Border? _mouseBorder;
         private const string SpaceKeyTag = "SPACE_KEY";
         private const string PauseOverlayKeyId = "__PAUSE_OVERLAY__";
-        private ScaleTransform? _pauseIndicatorScale;               // Scale transform currently used by the persistent Pause indicator.
+        private ScaleTransform? _pauseIndicatorScale;               // scale transform used by the persistent Pause indicator
         private bool _pauseShortcutHeld = false;
         private StackPanel? _keysOutsideContainer;
         private StackPanel? _lineHost;
         private bool _previewFontKeysActive = false;
         private readonly List<FrameworkElement> _previewFontKeyHosts = [];
         private bool _mouseOnlyBackground = false;
+
 
         // === Input Tracking ===
         private DispatcherTimer? _scrollTimer;
@@ -138,6 +139,7 @@ namespace KeyClickOverlay
         private readonly List<string> _pillOrder = [];          // keys in left→right order (IDs match _activeKeyBoxes keys)
         private readonly Dictionary<string, double> _keyUnitsAtPressed = new(StringComparer.OrdinalIgnoreCase); // baseline widths
 
+
         // === Modifier / NumPad Guard ===
         private readonly HashSet<string> _pendingModUps = [];   // "ShiftKey", "CtrlKey", "AltKey"
         private readonly Dictionary<string, DateTime> _pendingModSince = [];
@@ -145,9 +147,10 @@ namespace KeyClickOverlay
         private bool _cullSubscribed = false;                   // render-loop culling attached?
         private DateTime _numpadGuardUntil = DateTime.MinValue;
 
+
         // === Background Pill Config ===
         private double _pillPadFactor = DefaultPillPadFactor;                   // padding as fraction of key "square" size
-        private double _pillCornerFactor = DefaultPillCornerFactor;                // corner radius as fraction of key "square" size
+        private double _pillCornerFactor = DefaultPillCornerFactor;            // corner radius as fraction of key "square" size
 
 
         // === Preferences (persisted to %AppData%\KeyClickOverlay\prefs.json) ===
@@ -176,7 +179,7 @@ namespace KeyClickOverlay
             public ModifierKeys TransparentHotkeyModifiers { get; set; }
                 = ModifierKeys.Control | ModifierKeys.Shift;
 
-            // Whether Ctrl+Space may toggle between current and previous preset
+            // Whether the preset-switch shortcut is enabled
             [JsonPropertyName("presetToggleHotkeyEnabled")]
             public bool PresetToggleHotkeyEnabled { get; set; } = true;
 
@@ -188,7 +191,7 @@ namespace KeyClickOverlay
             public ModifierKeys PresetSwitchHotkeyModifiers { get; set; }
                 = ModifierKeys.Control;
 
-            // Hidden shortcut to enable/disable preset switching: default Ctrl+Alt+Shift+F12
+            // Preset-switch toggle shortcut: default Ctrl+Alt+Shift+F12
             [JsonPropertyName("presetSwitchToggleHotkeyKey")]
             public Keys PresetSwitchToggleHotkeyKey { get; set; } = Keys.F12;
 
@@ -196,7 +199,7 @@ namespace KeyClickOverlay
             public ModifierKeys PresetSwitchToggleHotkeyModifiers { get; set; }
                 = ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift;
 
-            // Hidden shortcut to clear all drawn overlay keys/buttons: default Ctrl+Alt+Shift+F11
+            // Clear KeyClickOverlay shortcut: default Ctrl+Alt+Shift+F11
             [JsonPropertyName("clearOverlayHotkeyKey")]
             public Keys ClearOverlayHotkeyKey { get; set; } = Keys.F11;
 
@@ -262,36 +265,28 @@ namespace KeyClickOverlay
             return FormatShortcutLabel(mods, key);
         }
 
-        /// <summary>Human-readable label for the visible preset-switch shortcut.</summary>
+        /// <summary>Human-readable label for the preset-switch shortcut.</summary>
         private string GetPresetSwitchHotkeyLabel()
         {
-            return FormatShortcutLabel(
-                _prefs.PresetSwitchHotkeyModifiers,
-                _prefs.PresetSwitchHotkeyKey);
+            return FormatShortcutLabel(_prefs.PresetSwitchHotkeyModifiers, _prefs.PresetSwitchHotkeyKey);
         }
 
-        /// <summary>Human-readable label for the hidden preset-switch enable/disable shortcut.</summary>
+        /// <summary>Human-readable label for the preset-switch toggle shortcut.</summary>
         private string GetPresetSwitchToggleHotkeyLabel()
         {
-            return FormatShortcutLabel(
-                _prefs.PresetSwitchToggleHotkeyModifiers,
-                _prefs.PresetSwitchToggleHotkeyKey);
+            return FormatShortcutLabel(_prefs.PresetSwitchToggleHotkeyModifiers, _prefs.PresetSwitchToggleHotkeyKey);
         }
 
-        /// <summary>Human-readable label for the hidden clear-overlay shortcut.</summary>
+        /// <summary>Human-readable label for the Clear KeyClickOverlay shortcut.</summary>
         private string GetClearOverlayHotkeyLabel()
         {
-            return FormatShortcutLabel(
-                _prefs.ClearOverlayHotkeyModifiers,
-                _prefs.ClearOverlayHotkeyKey);
+            return FormatShortcutLabel(_prefs.ClearOverlayHotkeyModifiers, _prefs.ClearOverlayHotkeyKey);
         }
 
         /// <summary>Human-readable label for the pause/resume overlay shortcut.</summary>
         private string GetPauseOverlayHotkeyLabel()
         {
-            return FormatShortcutLabel(
-                _prefs.PauseOverlayHotkeyModifiers,
-                _prefs.PauseOverlayHotkeyKey);
+            return FormatShortcutLabel(_prefs.PauseOverlayHotkeyModifiers, _prefs.PauseOverlayHotkeyKey);
         }
 
         /// <summary>
@@ -416,6 +411,7 @@ namespace KeyClickOverlay
             _prefs.PrivacyNoticeShown = true;
             SavePrefs();
         }
+
 
         // === Presets (named JSON files under %AppData%\KeyClickOverlay\presets) ===
 
@@ -653,7 +649,10 @@ namespace KeyClickOverlay
             ClampWindowToVirtualScreen();
         }
 
-        /// <summary>Arrow-key nudge: moves window by 1 DIP per key press. Only when focused, in Normal state, and NOT transparent-to-mouse. Also disabled while the context menu is open.</summary>
+        /// <summary>
+        /// Arrow-key nudge: moves window by 1 DIP per key press. Only when focused, in Normal state, and NOT transparent-to-mouse. 
+        /// Also disabled while the context menu is open.
+        /// </summary>
         private void OnNudgeWindowPreviewKeyDown(object sender, KeyEventArgs e)
         {
             // Only when this window is the active/focused window
@@ -721,11 +720,7 @@ namespace KeyClickOverlay
             {
                 if (!File.Exists(path))
                 {
-                    ShowModernInfo(
-                        "Preset not found",
-                        "Preset file not found:\n" + path,
-                        ok: "OK",
-                        icon: DialogIcon.Warning);
+                    ShowModernInfo("Preset not found", "Preset file not found:\n" + path, ok: "OK", icon: DialogIcon.Warning);
                     return;
                 }
 
@@ -733,11 +728,7 @@ namespace KeyClickOverlay
                 var data = JsonSerializer.Deserialize<PresetData>(json, PrefsJsonOptions);
                 if (data is null)
                 {
-                    ShowModernInfo(
-                        "Invalid preset",
-                        "Preset file is invalid:\n" + path,
-                        ok: "OK",
-                        icon: DialogIcon.Warning);
+                    ShowModernInfo("Invalid preset", "Preset file is invalid:\n" + path, ok: "OK", icon: DialogIcon.Warning);
                     return;
                 }
 
@@ -757,11 +748,7 @@ namespace KeyClickOverlay
             }
             catch (Exception ex)
             {
-                ShowModernInfo(
-                    "Preset error",
-                    "Failed to apply preset:\n" + ex.Message,
-                    ok: "OK",
-                    icon: DialogIcon.Error);
+                ShowModernInfo("Preset error", "Failed to apply preset:\n" + ex.Message, ok: "OK", icon: DialogIcon.Error);
             }
         }
 
@@ -772,18 +759,14 @@ namespace KeyClickOverlay
 
             if (string.IsNullOrWhiteSpace(previousPath) || !File.Exists(previousPath))
             {
-                ShowModernInfoAuto(
-                    "No previous preset",
-                    "There is no previous preset to switch back to yet.",
-                    milliseconds: 2500,
-                    icon: DialogIcon.Info);
+                ShowModernInfoAuto("No previous preset", "There is no previous preset to switch back to yet.", milliseconds: 2500, icon: DialogIcon.Info);
                 return;
             }
 
             ApplyPresetFromPath(previousPath, preserveTransparentMode: true);
         }
 
-        /// <summary>Enable or disable the Ctrl+Space preset-switch shortcut. This is controlled by the hidden Ctrl+Alt+Shift+F12 meta shortcut.</summary>
+        /// <summary>Enable or disable the preset-switch shortcut.</summary>
         private void TogglePresetToggleHotkeyEnabled()
         {
             _prefs.PresetToggleHotkeyEnabled = !_prefs.PresetToggleHotkeyEnabled;
@@ -815,11 +798,7 @@ namespace KeyClickOverlay
             }
             catch (Exception ex)
             {
-                ShowModernInfo(
-                    "Preset error",
-                    "Failed to save preset:\n" + ex.Message,
-                    ok: "OK",
-                    icon: DialogIcon.Error);
+                ShowModernInfo("Preset error", "Failed to save preset:\n" + ex.Message, ok: "OK", icon: DialogIcon.Error);
             }
         }
 
@@ -838,11 +817,7 @@ namespace KeyClickOverlay
             }
 
             SaveCurrentStateToPreset(path!, makeActive: true);
-            ShowModernInfoAuto(
-                "Preset saved",
-                "The active preset was overwritten with the current settings.",
-                milliseconds: 2500,
-                icon: DialogIcon.Success);
+            ShowModernInfoAuto("Preset saved", "The active preset was overwritten with the current settings.", milliseconds: 2500, icon: DialogIcon.Success);
         }
 
 
@@ -867,16 +842,14 @@ namespace KeyClickOverlay
             // 1) Delete the AppData settings folder
             try
             {
-                string appDataDir = IOPath.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "KeyClickOverlay");
+                string appDataDir = IOPath.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "KeyClickOverlay");
 
                 if (Directory.Exists(appDataDir))
                     Directory.Delete(appDataDir, recursive: true);
             }
             catch { /* ignore any IO issues */ }
 
-            // 2) Delete the TEMP caches used for SVG tinting the code writes these under %TEMP%\KeyClickOverlay\mouse_tint_cache and key_tint_cache) :contentReference[oaicite:1]{index=1}
+            // 2) Delete SVG tint caches under %TEMP%\KeyClickOverlay
             try
             {
                 string tempBase = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "KeyClickOverlay");
@@ -964,10 +937,7 @@ namespace KeyClickOverlay
 
             // Bind directly to the static Inter Regular TTF (family "Inter", face "Regular").
             public static readonly FontFamily Font =
-                new(
-                    new Uri("pack://application:,,,/KeyClickOverlay;component/assets/fonts/", UriKind.Absolute),
-                    "./Inter-Regular.ttf#Inter"
-                );
+                new(new Uri("pack://application:,,,/KeyClickOverlay;component/assets/fonts/", UriKind.Absolute), "./Inter-Regular.ttf#Inter");
 
             public static readonly SolidColorBrush KeyFill = Brush("#282828"); // key background
             public static readonly SolidColorBrush TextFill = Brush("#e5e5e5"); // label color
@@ -1067,15 +1037,12 @@ namespace KeyClickOverlay
         }
 
         /// <summary>Builds a centered glyph view sized by height for normal/num-pad keys.</summary>
-        private static Viewbox BuildCenteredGlyphElement(
-            string text,
-            double targetGlyphHeight,
-            Brush textBrush)
+        private static Viewbox BuildCenteredGlyphElement(string text, double targetGlyphHeight, Brush textBrush)
             => BuildCenteredGlyphElement(
                 text,
                 targetGlyphHeight,
                 textBrush,
-                forWideKey: false,                // convenience overload: no width reporting
+                forWideKey: false,                     // convenience overload: no width reporting
                 wideBorderPadding: new Thickness(0),
                 out _);
 
@@ -1135,10 +1102,7 @@ namespace KeyClickOverlay
         }
 
         /// <summary>Builds a baseline-aligned glyph view sized by cap height for sign keys.</summary>
-        private static Viewbox BuildBaselineAlignedGlyphElement(
-            string text,
-            double targetCapHeight,
-            Brush textBrush)
+        private static Viewbox BuildBaselineAlignedGlyphElement(string text, double targetCapHeight, Brush textBrush)
         {
             if (string.IsNullOrWhiteSpace(text)) text = "?";
 
@@ -1195,7 +1159,7 @@ namespace KeyClickOverlay
         /// <summary>Initialize the overlay window, set up UI and global hooks, and start timers.</summary>
         public MainWindow()
         {
-            // ---------- Load persisted prefs + verify assets ----------
+            // ---------- Initialize app and load persisted preferences ----------
             InitializeComponent();
 
             AppTheme.Changed += AppTheme_Changed;
@@ -1204,8 +1168,8 @@ namespace KeyClickOverlay
             Closed += MainWindow_Closed;
 
             // Minimum working size for overlay (prevents unusably tiny windows)
-            this.MinWidth = 80;  // pick what feels right for your UI
-            this.MinHeight = 45;  // small but still usable
+            this.MinWidth = 80;   // minimum usable overlay width
+            this.MinHeight = 45;  // minimum usable overlay height
 
             if (_fullyTransparentBrush is SolidColorBrush sc && sc.CanFreeze) sc.Freeze();
             WindowStartupLocation = WindowStartupLocation.Manual;
@@ -1372,9 +1336,7 @@ namespace KeyClickOverlay
             }
         }
 
-        private void MainWindow_Closed(
-            object? sender,
-            EventArgs e)
+        private void MainWindow_Closed(object? sender, EventArgs e)
         {
             AppTheme.Changed -= AppTheme_Changed;
             AppTheme.Stop();
@@ -1388,11 +1350,7 @@ namespace KeyClickOverlay
 
             if (!Directory.Exists(svgDir))
             {
-                ShowModernInfo(
-                    "Missing content",
-                    "The 'assets/svg' folder is missing in the installation.\nPlease reinstall the app.",
-                    ok: "OK",
-                    icon: DialogIcon.Error);
+                ShowModernInfo("Missing content", "The 'assets/svg' folder is missing in the installation.\nPlease reinstall the app.", ok: "OK", icon: DialogIcon.Error);
 
                 Application.Current.Shutdown();
                 return;
@@ -1410,7 +1368,7 @@ namespace KeyClickOverlay
 
             try
             {
-                // Create the toolbar button (same action as Ctrl+Alt+F12)
+                // Create the toolbar button for Transparent-mode
                 Icon icon = AppResources.MouseIcon ?? throw new InvalidOperationException("MouseIcon missing.");
                 var transparentButton = new ThumbnailToolBarButton(icon, $"Transparent-mode ({GetTransparentHotkeyLabel()})");
                 transparentButton.Click += (_, _) => SetTransparentMode(!_transparentToMouse, withPrompt: true);
@@ -1551,7 +1509,7 @@ namespace KeyClickOverlay
 
         // === Core overlay layout & right-click context menu ===
 
-        /// <summary>Keeps either this window or an active Pixi dialog above all other windows.<summary>
+        /// <summary>Keeps either this window or an active dialog above all other windows.</summary>
 
         private void ReassertTopmost()
         {
@@ -1819,21 +1777,14 @@ namespace KeyClickOverlay
 
             // Placeholder config
             const string PresetNamePlaceholder = "Name preset";
-            var normalBrush = MenuBrush;                         // non-null (from helper we added)
             var hintBrush = SystemColors.GrayTextBrush;       // subtle hint color
 
-            var nameInput = CreateContextMenuTextInput(
-                PresetNamePlaceholder,
-                minWidth: 200);
+            var nameInput = CreateContextMenuTextInput(PresetNamePlaceholder, minWidth: 200);
 
             var nameBox = nameInput.TextBox;
             var nameInputRoot = nameInput.Root;
 
-            nameInputRoot.Margin = new Thickness(
-                MenuUI.GlyphColWidth + MenuUI.ContentLeftInset,
-                0,
-                12,
-                0);
+            nameInputRoot.Margin = new Thickness(MenuUI.GlyphColWidth + MenuUI.ContentLeftInset, 0, 12, 0);
 
             // Focus: keep the placeholder, just select it so the first key replaces it
             nameBox.GotKeyboardFocus += (_, __) =>
@@ -1911,9 +1862,7 @@ namespace KeyClickOverlay
                 {
                     string oldName = System.IO.Path.GetFileNameWithoutExtension(oldPath);
 
-                    var renameInput = CreateContextMenuTextInput(
-                        oldName,
-                        minWidth: 200);
+                    var renameInput = CreateContextMenuTextInput(oldName, minWidth: 200);
 
                     var editor = renameInput.TextBox;
                     var editorRoot = renameInput.Root;
@@ -2264,15 +2213,7 @@ namespace KeyClickOverlay
                         ToolTip = $"Save (overwrite) this preset.\n{path}",
                         HorizontalAlignment = HorizontalAlignment.Right,
                         VerticalAlignment = VerticalAlignment.Center,
-                        Content = CreateThemedSvgIcon(
-                            IOPath.Combine(
-                                AppDomain.CurrentDomain.BaseDirectory,
-                                "assets",
-                                "svg",
-                                "save.svg"),
-                            MenuBrush,
-                            MenuUI.IconSize
-                        )
+                        Content = CreateThemedSvgIcon(IOPath.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "svg", "save.svg"), MenuBrush, MenuUI.IconSize)
                     };
                     Grid.SetColumn(saveBtn, 1);
 
@@ -2461,12 +2402,7 @@ namespace KeyClickOverlay
                 }
                 catch (Exception ex)
                 {
-                    ShowModernInfo(
-                        title: "Save failed",
-                        message: "Failed to save preset:\n" + ex.Message,
-                        ok: "OK",
-                        icon: DialogIcon.Error
-                    ); // themed error dialog
+                    ShowModernInfo(title: "Save failed", message: "Failed to save preset:\n" + ex.Message, ok: "OK", icon: DialogIcon.Error); // themed error dialog
                 }
                 finally
                 {
@@ -2582,13 +2518,13 @@ namespace KeyClickOverlay
             // Initial list build
             RebuildPresetList();
 
-            // Toggle Ctrl+Space preset switching
+            // Toggle preset switching
             var presetToggleHotkeyItem = new MenuItem
             {
                 Header = "Enable preset switch shortcut",
                 IsCheckable = true,
                 IsChecked = _prefs.PresetToggleHotkeyEnabled,
-                ToolTip = "Enable or disable the shortcut (Ctrl+Space) for switching between the current preset and the previous preset.",
+                ToolTip = "Enable or disable the shortcut for switching between the current preset and the previous preset.",
                 StaysOpenOnClick = true
             };
 
@@ -2717,9 +2653,7 @@ namespace KeyClickOverlay
 
             var changePauseOverlayHotkeyItem = new MenuItem
             {
-                Header = CreateShortcutMenuHeader(
-                    "Pause KeyClickOverlay shortcut",
-                    pauseOverlayShortcutText),
+                Header = CreateShortcutMenuHeader("Pause KeyClickOverlay shortcut", pauseOverlayShortcutText),
 
                 ToolTip =
                     "Pauses or resumes keyboard and mouse input display.\n\n" +
@@ -2828,7 +2762,7 @@ namespace KeyClickOverlay
             var sepAfterTransparent = new Separator();
             InsertAfter(cm, sepAfterTransparent, pauseOverlayItem);
 
-            // Handler for Ctrl+Space preset-toggle shortcut
+            // Handler for enabling/disabling the preset-switch shortcut
             presetToggleHotkeyItem.Checked += (_, __) =>
             {
                 if (_syncingMenu) return;
@@ -3032,9 +2966,7 @@ namespace KeyClickOverlay
                 cm.Items.Insert(cornerIdx + 1, sepAfterCorner);
 
             // Window size row under the separator
-            string windowSizeIconPath = IOPath.Combine(
-                AppDomain.CurrentDomain.BaseDirectory,
-                "assets", "svg", "WindowSize.svg");
+            string windowSizeIconPath = IOPath.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "svg", "WindowSize.svg");
 
             // Build 2-row section
             var (sizeTitleItem, sizeEditorItem, sizeSync) =
@@ -3043,10 +2975,9 @@ namespace KeyClickOverlay
             // Window position (bottom-left) under window size
             string windowPosIconPath = IOPath.Combine(
                 AppDomain.CurrentDomain.BaseDirectory,
-                "assets", "svg", "WindowPosition.svg"); // use any name you want, or reuse an existing icon
+                "assets", "svg", "WindowPosition.svg");
 
-            var (posTitleItem, posEditorItem, posSync) =
-                CreateWindowBottomLeftRow("Window position (bottom-left)", windowPosIconPath);
+            var (posTitleItem, posEditorItem, posSync) = CreateWindowBottomLeftRow("Window position (bottom-left)", windowPosIconPath);
 
             // Insert under sepAfterCorner: title row first, editor row second
             int sepIdx = cm.Items.IndexOf(sepAfterCorner);
@@ -3161,12 +3092,8 @@ namespace KeyClickOverlay
                 newItemContainerStyle.Setters.Add(new Setter(MenuItem.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
                 savePresetMenu.ItemContainerStyle = newItemContainerStyle;
 
-                // Inline editor width tracks submenu width
+                // Inline editor tracks submenu width
                 inlineNewItem.MinWidth = submenuInnerWidth;
-                double editorWidth = Math.Max(
-                    MainMenuWidth - 60,
-                    submenuInnerWidth - (MenuUI.GlyphColWidth + MenuUI.ContentLeftInset + 12)
-                );
 
                 nameInputRoot.Width = double.NaN;
                 nameInputRoot.HorizontalAlignment = HorizontalAlignment.Stretch;
@@ -3388,28 +3315,16 @@ namespace KeyClickOverlay
             // ---------- Context-menu slider resources ----------
 
             // Inactive track.
-            var sliderTrack = SolidBrush(
-                AppTheme.IsLight
-                    ? "#FFD0D0D0"
-                    : "#FF666666");
+            var sliderTrack = SolidBrush(AppTheme.IsLight ? "#FFD0D0D0" : "#FF666666");
 
             // Filled/value track.
-            var sliderValue = SolidBrush(
-                AppTheme.IsLight
-                    ? "#FF8A8A8A"
-                    : "#FFB8B8B8");
+            var sliderValue = SolidBrush(AppTheme.IsLight ? "#FF8A8A8A" : "#FFB8B8B8");
 
             // Thumb.
-            var sliderThumb = SolidBrush(
-                AppTheme.IsLight
-                    ? "#FF3F3F3F"
-                    : "#FFE0E0E0");
+            var sliderThumb = SolidBrush(AppTheme.IsLight ? "#FF3F3F3F" : "#FFE0E0E0");
 
             // Hover/drag thumb.
-            var sliderThumbHover = SolidBrush(
-                AppTheme.IsLight
-                    ? "#FF202020"
-                    : "#FFFFFFFF");
+            var sliderThumbHover = SolidBrush(AppTheme.IsLight ? "#FF202020" : "#FFFFFFFF");
 
             // Kept for compatibility even though dragging now uses hover color.
             var sliderThumbPressed = sliderThumbHover;
@@ -3443,9 +3358,7 @@ namespace KeyClickOverlay
 
             var sliderDictionary = new ResourceDictionary
             {
-                Source = new Uri(
-                    "pack://application:,,,/KeyClickOverlay;component/Styles/ContextMenuSliderStyle.xaml",
-                    UriKind.Absolute)
+                Source = new Uri("pack://application:,,,/KeyClickOverlay;component/Styles/ContextMenuSliderStyle.xaml", UriKind.Absolute)
             };
 
             foreach (DictionaryEntry entry in sliderDictionary)
@@ -3474,90 +3387,38 @@ namespace KeyClickOverlay
             cm.Template = new ControlTemplate(typeof(ContextMenu)) { VisualTree = root };
             cm.UseLayoutRounding = true;
             cm.MinWidth = MainMenuWidth;
-            cm.Width = MainMenuWidth;       // Lock the main menu width
-            cm.MaxWidth = MainMenuWidth;    // Ensure it never grows beyond 140
+            cm.Width = MainMenuWidth;       // lock the main menu width
+            cm.MaxWidth = MainMenuWidth;    // prevent the main menu from growing
             cm.Foreground = fg;
             cm.BorderThickness = new Thickness(0);
 
             // ToolTip style - match the context menu theme.
-            var toolTipTemplate =
-                new ControlTemplate(typeof(System.Windows.Controls.ToolTip));
-
-            var toolTipBorder =
-                new FrameworkElementFactory(typeof(Border));
-
-            toolTipBorder.SetValue(
-                Border.BackgroundProperty,
-                bg);
-
-            toolTipBorder.SetValue(
-                Border.BorderBrushProperty,
-                outline);
-
-            toolTipBorder.SetValue(
-                Border.BorderThicknessProperty,
-                new Thickness(1));
-
-            toolTipBorder.SetValue(
-                Border.CornerRadiusProperty,
-                new CornerRadius(6));
-
-            toolTipBorder.SetValue(
-                Border.PaddingProperty,
-                new Thickness(8, 5, 8, 5));
-
-            toolTipBorder.SetValue(
-                Border.SnapsToDevicePixelsProperty,
-                true);
-
+            var toolTipTemplate = new ControlTemplate(typeof(System.Windows.Controls.ToolTip));
+            var toolTipBorder = new FrameworkElementFactory(typeof(Border));
+            toolTipBorder.SetValue(Border.BackgroundProperty, bg);
+            toolTipBorder.SetValue(Border.BorderBrushProperty, outline);
+            toolTipBorder.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+            toolTipBorder.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+            toolTipBorder.SetValue(Border.PaddingProperty, new Thickness(8, 5, 8, 5));
+            toolTipBorder.SetValue(Border.SnapsToDevicePixelsProperty, true);
 
             // Wrapping tooltip text
-            var toolTipText =
-                new FrameworkElementFactory(typeof(TextBlock));
-
-            toolTipText.SetBinding(
-                TextBlock.TextProperty,
-                new System.Windows.Data.Binding
-                {
-                    RelativeSource =
-                        new System.Windows.Data.RelativeSource(
-                            System.Windows.Data.RelativeSourceMode.TemplatedParent),
-                    Path = new PropertyPath(
-                        System.Windows.Controls.ToolTip.ContentProperty)
-                });
-
-            toolTipText.SetValue(
-                TextBlock.TextWrappingProperty,
-                TextWrapping.Wrap);
-
-            toolTipText.SetValue(
-                TextBlock.MaxWidthProperty,
-                360.0);
-
-            toolTipText.SetValue(
-                TextBlock.FontSizeProperty,
-                13.0);
-
-            toolTipText.SetValue(
-                TextBlock.ForegroundProperty,
-                fg);
-
+            var toolTipText = new FrameworkElementFactory(typeof(TextBlock));
+            toolTipText.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding
+            {
+                RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent),
+                Path = new PropertyPath(System.Windows.Controls.ToolTip.ContentProperty)
+            });
+            toolTipText.SetValue(TextBlock.TextWrappingProperty, TextWrapping.Wrap);
+            toolTipText.SetValue(TextBlock.MaxWidthProperty, 360.0);
+            toolTipText.SetValue(TextBlock.FontSizeProperty, 13.0);
+            toolTipText.SetValue(TextBlock.ForegroundProperty, fg);
             toolTipBorder.AppendChild(toolTipText);
-
             toolTipTemplate.VisualTree = toolTipBorder;
 
-
-            var toolTipStyle =
-                new Style(typeof(System.Windows.Controls.ToolTip));
-
-            toolTipStyle.Setters.Add(
-                new Setter(
-                    System.Windows.Controls.ToolTip.TemplateProperty,
-                    toolTipTemplate));
-
-            cm.Resources[
-                typeof(System.Windows.Controls.ToolTip)] =
-                toolTipStyle;
+            var toolTipStyle = new Style(typeof(System.Windows.Controls.ToolTip));
+            toolTipStyle.Setters.Add(new Setter(System.Windows.Controls.ToolTip.TemplateProperty, toolTipTemplate));
+            cm.Resources[typeof(System.Windows.Controls.ToolTip)] = toolTipStyle;
 
             // Separator (thin line with vertical margins)
             var sepTpl = new ControlTemplate(typeof(Separator));
@@ -3729,13 +3590,8 @@ namespace KeyClickOverlay
         /// </summary>
         private static void ApplyToolTipTiming(DependencyObject target)
         {
-            ToolTipService.SetShowDuration(
-                target,
-                ToolTipDuration);
-
-            ToolTipService.SetInitialShowDelay(
-                target,
-                ToolTipDelay);
+            ToolTipService.SetShowDuration(target, ToolTipDuration);
+            ToolTipService.SetInitialShowDelay(target, ToolTipDelay);
         }
 
         /// <summary>
@@ -3761,7 +3617,7 @@ namespace KeyClickOverlay
         }
 
         /// <summary>
-        /// Opens the main context menu at the current mouse position when is exists with in the window.
+        /// Opens the main context menu at the current mouse position when it is inside the window.
         /// Uses a short debounce so local WPF RMB and global-hook RMB do not double-open it.
         /// </summary>
         private void OpenGlobalContextMenuFromCurrentPointer()
@@ -3828,39 +3684,18 @@ namespace KeyClickOverlay
                 Name = "ButtonChrome"
             };
 
-            chrome.SetValue(
-                Border.CornerRadiusProperty,
-                new CornerRadius(4));
-
-            chrome.SetValue(
-                Border.BackgroundProperty,
-                Brushes.Transparent);
+            chrome.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
+            chrome.SetValue(Border.BackgroundProperty, Brushes.Transparent);
 
             var content = new FrameworkElementFactory(typeof(ContentPresenter));
-
-            content.SetValue(
-                FrameworkElement.HorizontalAlignmentProperty,
-                HorizontalAlignment.Center);
-
-            content.SetValue(
-                FrameworkElement.VerticalAlignmentProperty,
-                VerticalAlignment.Center);
+            content.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            content.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
 
             chrome.AppendChild(content);
             template.VisualTree = chrome;
 
-            var hoverTrigger = new Trigger
-            {
-                Property = Button.IsMouseOverProperty,
-                Value = true
-            };
-
-            hoverTrigger.Setters.Add(
-                new Setter(
-                    Border.BackgroundProperty,
-                    SolidBrush("#307F7F7F"),
-                    "ButtonChrome"));
-
+            var hoverTrigger = new Trigger { Property = Button.IsMouseOverProperty, Value = true };
+            hoverTrigger.Setters.Add(new Setter(Border.BackgroundProperty, SolidBrush("#307F7F7F"), "ButtonChrome"));
             template.Triggers.Add(hoverTrigger);
 
             return template;
@@ -3874,32 +3709,15 @@ namespace KeyClickOverlay
             var template = new ControlTemplate(typeof(MenuItem));
 
             var border = new FrameworkElementFactory(typeof(Border));
+            border.SetValue(Border.BackgroundProperty, Brushes.Transparent);
 
-            border.SetValue(
-                Border.BackgroundProperty,
-                Brushes.Transparent);
-
-            var content =
-                new FrameworkElementFactory(typeof(ContentPresenter));
-
-            content.SetValue(
-                ContentPresenter.ContentSourceProperty,
-                "Header");
-
-            content.SetValue(
-                ContentPresenter.HorizontalAlignmentProperty,
-                HorizontalAlignment.Stretch);
-
-            content.SetValue(
-                ContentPresenter.VerticalAlignmentProperty,
-                VerticalAlignment.Center);
-
-            content.SetValue(
-                FrameworkElement.MarginProperty,
-                new Thickness(0));
+            var content = new FrameworkElementFactory(typeof(ContentPresenter));
+            content.SetValue(ContentPresenter.ContentSourceProperty, "Header");
+            content.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Stretch);
+            content.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+            content.SetValue(FrameworkElement.MarginProperty, new Thickness(0));
 
             border.AppendChild(content);
-
             template.VisualTree = border;
 
             return template;
@@ -3908,10 +3726,7 @@ namespace KeyClickOverlay
         /// <summary>
         /// Applies the shared context-menu input colors to a text field and its rounded container.
         /// </summary>
-        private static void ApplyContextMenuInputTheme(
-            Border border,
-            TextBox textBox,
-            bool isHovering)
+        private static void ApplyContextMenuInputTheme(Border border, TextBox textBox, bool isHovering)
         {
             bool focused = textBox.IsKeyboardFocusWithin;
 
@@ -3948,13 +3763,7 @@ namespace KeyClickOverlay
         }
 
         /// <summary>Create a compact, theme-aware numeric text input for the context menu.</summary>
-        private (
-            Border Root,
-            TextBox TextBox,
-            Button ClearButton,
-            Action<double> SetValue,
-            Func<double?> GetValue,
-            Action ApplyTheme)
+        private (Border Root, TextBox TextBox, Button ClearButton, Action<double> SetValue, Func<double?> GetValue, Action ApplyTheme)
         CreateNumericInput(
             double initialValue,
             double minimum,
@@ -3983,10 +3792,8 @@ namespace KeyClickOverlay
             };
 
             var grid = new Grid();
-            grid.ColumnDefinitions.Add(
-                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(
-                new ColumnDefinition { Width = new GridLength(MenuUI.NumericClearButtonWidth) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(MenuUI.NumericClearButtonWidth) });
 
             var textBox = new TextBox
             {
@@ -4101,11 +3908,8 @@ namespace KeyClickOverlay
                 return (button, glyph);
             }
 
-            var (stepUpButton, stepUpGlyph) =
-                CreateStepButton(pointsUp: true);
-
-            var (stepDownButton, stepDownGlyph) =
-                CreateStepButton(pointsUp: false);
+            var (stepUpButton, stepUpGlyph) = CreateStepButton(pointsUp: true);
+            var (stepDownButton, stepDownGlyph) = CreateStepButton(pointsUp: false);
 
             Grid.SetRow(stepUpButton, 0);
             Grid.SetRow(stepDownButton, 1);
@@ -4125,8 +3929,7 @@ namespace KeyClickOverlay
 
             border.Child = grid;
 
-            var iconButtonTemplate =
-                CreateContextMenuIconButtonTemplate();
+            var iconButtonTemplate = CreateContextMenuIconButtonTemplate();
 
             clearButton.Template = iconButtonTemplate;
             stepUpButton.Template = iconButtonTemplate;
@@ -4143,19 +3946,13 @@ namespace KeyClickOverlay
             }
 
             string FormatValue(double value) =>
-                value.ToString(
-                    numberFormat,
-                    System.Globalization.CultureInfo.CurrentCulture);
+                value.ToString(numberFormat, System.Globalization.CultureInfo.CurrentCulture);
 
             double lastValidValue = NormalizeValue(initialValue);
 
             double? ReadValue()
             {
-                if (!double.TryParse(
-                        textBox.Text,
-                        System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.CurrentCulture,
-                        out double value))
+                if (!double.TryParse(textBox.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.CurrentCulture, out double value))
                 {
                     return null;
                 }
@@ -4214,10 +4011,7 @@ namespace KeyClickOverlay
 
             void ApplyTheme()
             {
-                ApplyContextMenuInputTheme(
-                    border,
-                    textBox,
-                    isHovering);
+                ApplyContextMenuInputTheme(border, textBox, isHovering);
 
                 if (AppTheme.IsLight)
                 {
@@ -4291,13 +4085,7 @@ namespace KeyClickOverlay
             SetValue(initialValue);
             ApplyTheme();
 
-            return (
-                border,
-                textBox,
-                clearButton,
-                SetValue,
-                ReadValue,
-                ApplyTheme);
+            return (border, textBox, clearButton, SetValue, ReadValue, ApplyTheme);
         }
 
         /// <summary>
@@ -4310,8 +4098,7 @@ namespace KeyClickOverlay
             {
                 MinWidth = minWidth,
                 Height = MenuUI.NumericInputHeight,
-                CornerRadius = new CornerRadius(
-                    MenuUI.NumericInputCornerRadius),
+                CornerRadius = new CornerRadius(MenuUI.NumericInputCornerRadius),
                 BorderThickness = new Thickness(1),
                 SnapsToDevicePixels = true
             };
@@ -4334,10 +4121,7 @@ namespace KeyClickOverlay
 
             void ApplyTheme()
             {
-                ApplyContextMenuInputTheme(
-                    border,
-                    textBox,
-                    isHovering);
+                ApplyContextMenuInputTheme(border, textBox, isHovering);
             }
 
             border.MouseEnter += (_, __) =>
@@ -4364,10 +4148,7 @@ namespace KeyClickOverlay
 
             ApplyTheme();
 
-            return (
-                border,
-                textBox,
-                ApplyTheme);
+            return (border, textBox, ApplyTheme);
         }
 
         /// <summary>Build a (label + slider + custom numeric input) menu row with safe two-way sync.</summary>
@@ -4392,29 +4173,10 @@ namespace KeyClickOverlay
                 Margin = new Thickness(8, 4, 8, 6)
             };
 
-            grid.RowDefinitions.Add(
-                new RowDefinition
-                {
-                    Height = GridLength.Auto
-                });
-
-            grid.RowDefinitions.Add(
-                new RowDefinition
-                {
-                    Height = GridLength.Auto
-                });
-
-            grid.ColumnDefinitions.Add(
-                new ColumnDefinition
-                {
-                    Width = new GridLength(1, GridUnitType.Star)
-                });
-
-            grid.ColumnDefinitions.Add(
-                new ColumnDefinition
-                {
-                    Width = GridLength.Auto
-                });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var label = new TextBlock
             {
@@ -4437,9 +4199,7 @@ namespace KeyClickOverlay
                 Width = 170
             };
 
-            slider.SetResourceReference(
-                FrameworkElement.StyleProperty,
-                "ContextMenuSliderStyle");
+            slider.SetResourceReference(FrameworkElement.StyleProperty, "ContextMenuSliderStyle");
 
             Grid.SetRow(slider, 1);
             Grid.SetColumn(slider, 0);
@@ -4505,10 +4265,7 @@ namespace KeyClickOverlay
             {
                 updating = true;
 
-                double value = Math.Clamp(
-                    getValue(),
-                    min,
-                    max);
+                double value = Math.Clamp(getValue(), min, max);
 
                 slider.Value = value;
                 numericInput.SetValue(value);
@@ -4548,14 +4305,10 @@ namespace KeyClickOverlay
                 Margin = new Thickness(8, 2, 8 + MenuUI.RowRightInset, 6)
             };
 
-            grid.ColumnDefinitions.Add(
-                new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "GeoLabel1" });   // W: / X:
-            grid.ColumnDefinitions.Add(
-                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });             // first box — grows to fill
-            grid.ColumnDefinitions.Add(
-                new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "GeoLabel2" });   // H: / Y:
-            grid.ColumnDefinitions.Add(
-                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });             // second box — grows to fill
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "GeoLabel1" });   // W: / X:
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });             // first box — grows to fill
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "GeoLabel2" });   // H: / Y:
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });             // second box — grows to fill
 
             var widthLabel = new TextBlock
             {
@@ -4617,15 +4370,15 @@ namespace KeyClickOverlay
                 numberFormat: "0",
                 showStepButtons: true,
                 stretchToFill: true,
-                            onValueCommitted: value =>
-                            {
-                                if (updating)
-                                    return;
+                onValueCommitted: value =>
+                {
+                    if (updating)
+                        return;
 
-                                updating = true;
-                                ApplySize(value, ReadCurrentHeight());
-                                updating = false;
-                            });
+                    updating = true;
+                    ApplySize(value, ReadCurrentHeight());
+                    updating = false;
+                });
 
             Grid.SetColumn(widthInput.Root, 1);
 
@@ -4638,15 +4391,15 @@ namespace KeyClickOverlay
                 numberFormat: "0",
                 showStepButtons: true,
                 stretchToFill: true,
-                            onValueCommitted: value =>
-                            {
-                                if (updating)
-                                    return;
+                onValueCommitted: value =>
+                {
+                    if (updating)
+                        return;
 
-                                updating = true;
-                                ApplySize(ReadCurrentWidth(), value);
-                                updating = false;
-                            });
+                    updating = true;
+                    ApplySize(ReadCurrentWidth(), value);
+                    updating = false;
+                });
 
             Grid.SetColumn(heightInput.Root, 3);
 
@@ -4781,15 +4534,15 @@ namespace KeyClickOverlay
                 numberFormat: "0",
                 showStepButtons: true,
                 stretchToFill: true,
-                            onValueCommitted: value =>
-                            {
-                                if (updating)
-                                    return;
+                onValueCommitted: value =>
+                {
+                    if (updating)
+                        return;
 
-                                updating = true;
-                                ApplyBottomLeft(value, GetBottomLeftY());
-                                updating = false;
-                            });
+                    updating = true;
+                    ApplyBottomLeft(value, GetBottomLeftY());
+                    updating = false;
+                });
 
             Grid.SetColumn(xInput.Root, 1);
 
@@ -4802,15 +4555,15 @@ namespace KeyClickOverlay
                 numberFormat: "0",
                 showStepButtons: true,
                 stretchToFill: true,
-                            onValueCommitted: value =>
-                            {
-                                if (updating)
-                                    return;
+                onValueCommitted: value =>
+                {
+                    if (updating)
+                        return;
 
-                                updating = true;
-                                ApplyBottomLeft(GetBottomLeftX(), value);
-                                updating = false;
-                            });
+                    updating = true;
+                    ApplyBottomLeft(GetBottomLeftX(), value);
+                    updating = false;
+                });
 
             Grid.SetColumn(yInput.Root, 3);
 
@@ -4839,6 +4592,7 @@ namespace KeyClickOverlay
             return (titleItem, editorItem, Sync);
         }
 
+
         // === Background color dialog (PixiEditor picker + eyedropper) ===
 
         /// <summary>
@@ -4846,16 +4600,14 @@ namespace KeyClickOverlay
         /// </summary>
         private static void ApplyWpfUiDialogTheme(FrameworkElement dialog)
         {
-            var theme =
-                AppTheme.IsDark
-                    ? Wpf.Ui.Appearance.ApplicationTheme.Dark
-                    : Wpf.Ui.Appearance.ApplicationTheme.Light;
+            var theme = AppTheme.IsDark
+                ? Wpf.Ui.Appearance.ApplicationTheme.Dark
+                : Wpf.Ui.Appearance.ApplicationTheme.Light;
 
             // Keep one ThemesDictionary for the lifetime of the dialog.
-            var themeDictionary =
-                dialog.Resources.MergedDictionaries
-                    .OfType<ThemesDictionary>()
-                    .FirstOrDefault();
+            var themeDictionary = dialog.Resources.MergedDictionaries
+                .OfType<ThemesDictionary>()
+                .FirstOrDefault();
 
             if (themeDictionary is null)
             {
@@ -4874,23 +4626,16 @@ namespace KeyClickOverlay
             // ControlsDictionary must only be added once.
             // Removing/re-adding it after the Window has been shown can cause
             // WPF window properties such as AllowsTransparency to be reapplied.
-            if (!dialog.Resources.MergedDictionaries
-                .OfType<ControlsDictionary>()
-                .Any())
+            if (!dialog.Resources.MergedDictionaries.OfType<ControlsDictionary>().Any())
             {
-                dialog.Resources.MergedDictionaries.Add(
-                    new ControlsDictionary());
+                dialog.Resources.MergedDictionaries.Add(new ControlsDictionary());
             }
         }
 
         /// <summary>
         /// Creates the shared WPF-UI dialog layout with a title bar and content area.
         /// </summary>
-        private (Grid Root, WpfTitleBar TitleBar) CreateDialogRoot(
-            FluentWindow dlg,
-            UIElement content,
-            Brush background,
-            bool stretchContent = false)
+        private (Grid Root, WpfTitleBar TitleBar) CreateDialogRoot(FluentWindow dlg, UIElement content, Brush background, bool stretchContent = false)
         {
             var titleBar = new WpfTitleBar
             {
@@ -4908,19 +4653,11 @@ namespace KeyClickOverlay
                 Background = background
             };
 
-            root.RowDefinitions.Add(
-                new RowDefinition
-                {
-                    Height = GridLength.Auto
-                });
-
-            root.RowDefinitions.Add(
-                new RowDefinition
-                {
-                    Height = stretchContent
-                        ? new GridLength(1, GridUnitType.Star)
-                        : GridLength.Auto
-                });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition
+            {
+                Height = stretchContent ? new GridLength(1, GridUnitType.Star) : GridLength.Auto
+            });
 
             Grid.SetRow(titleBar, 0);
             Grid.SetRow(content, 1);
@@ -4936,12 +4673,7 @@ namespace KeyClickOverlay
         /// <summary>
         /// Creates a WPF-UI FluentWindow configured as a KeyClickOverlay dialog shell.
         /// </summary>
-        private FluentWindow CreateDialogWindow(
-            string title,
-            Brush background,
-            double minWidth = 0,
-            double minHeight = 0,
-            bool centerOnScreen = false)
+        private FluentWindow CreateDialogWindow(string title, Brush background, double minWidth = 0, double minHeight = 0, bool centerOnScreen = false)
         {
             var dlg = new FluentWindow
             {
@@ -4973,20 +4705,14 @@ namespace KeyClickOverlay
                 try
                 {
                     NativeMethods.TryApplyWin11RoundedCorners(dlg);
-                    NativeMethods.TryApplyImmersiveDarkTitleBar(
-                        dlg,
-                        AppTheme.IsDark);
+                    NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, AppTheme.IsDark);
                 }
                 catch
                 {
                 }
             };
 
-            BindDynamicResource(
-                dlg,
-                Control.ForegroundProperty,
-                "TextFillColorPrimaryBrush",
-                "SystemControlForegroundBaseHighBrush");
+            BindDynamicResource(dlg, Control.ForegroundProperty, "TextFillColorPrimaryBrush", "SystemControlForegroundBaseHighBrush");
 
             return dlg;
         }
@@ -4994,10 +4720,7 @@ namespace KeyClickOverlay
         /// <summary>
         /// Creates the shared icon-and-message content layout used by standard dialogs.
         /// </summary>
-        private Grid CreateDialogMessageContent(
-            string message,
-            DialogIcon icon,
-            Brush background)
+        private Grid CreateDialogMessageContent(string message, DialogIcon icon, Brush background)
         {
             var contentGrid = new Grid
             {
@@ -5009,25 +4732,16 @@ namespace KeyClickOverlay
 
             if (icon != DialogIcon.None)
             {
-                contentGrid.ColumnDefinitions.Add(
-                    new ColumnDefinition
-                    {
-                        Width = GridLength.Auto
-                    });
+                contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             }
 
-            contentGrid.ColumnDefinitions.Add(
-                new ColumnDefinition
-                {
-                    Width = new GridLength(1, GridUnitType.Star)
-                });
+            contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
             int messageColumn = 0;
 
             if (icon != DialogIcon.None)
             {
-                FrameworkElement iconElement =
-                    BuildDialogIcon(icon);
+                FrameworkElement iconElement = BuildDialogIcon(icon);
 
                 Grid.SetColumn(iconElement, 0);
 
@@ -5049,9 +4763,7 @@ namespace KeyClickOverlay
                 FontSize = 14
             };
 
-            Grid.SetColumn(
-                messageText,
-                messageColumn);
+            Grid.SetColumn(messageText, messageColumn);
 
             contentGrid.Children.Add(messageText);
 
@@ -5059,13 +4771,9 @@ namespace KeyClickOverlay
         }
 
         /// <summary>Create a themed dialog shell hosting PixiEditor’s color picker.</summary>
-        private (FluentWindow dlg, StandardColorPicker picker) CreateColorDialogShell(string[] surfaceKeys, Brush fallbackSurface)
+        private (FluentWindow dlg, StandardColorPicker picker) CreateColorDialogShell(Brush fallbackSurface)
         {
-            var dlg = CreateDialogWindow(
-                "Select background color",
-                fallbackSurface,
-                minWidth: 300,
-                minHeight: 520);
+            var dlg = CreateDialogWindow("Select background color", fallbackSurface, minWidth: 300, minHeight: 520);
 
             // Create StandardColorPicker
             byte initA = (byte)Math.Round(Math.Clamp(_backgroundOpacity, 0, 1) * 255);
@@ -5083,12 +4791,8 @@ namespace KeyClickOverlay
             var rd = new ResourceDictionary
             {
                 Source = AppTheme.IsDark
-                    ? new Uri(
-                        "pack://application:,,,/KeyClickOverlay;component/Styles/DarkColorPickerStyle.xaml",
-                        UriKind.RelativeOrAbsolute)
-                    : new Uri(
-                        "pack://application:,,,/KeyClickOverlay;component/Styles/LightColorPickerStyle.xaml",
-                        UriKind.RelativeOrAbsolute)
+                    ? new Uri("pack://application:,,,/KeyClickOverlay;component/Styles/DarkColorPickerStyle.xaml", UriKind.RelativeOrAbsolute)
+                    : new Uri("pack://application:,,,/KeyClickOverlay;component/Styles/LightColorPickerStyle.xaml", UriKind.RelativeOrAbsolute)
             };
 
             _pixiColorPickerStyle =
@@ -5106,16 +4810,11 @@ namespace KeyClickOverlay
                 var rd = new ResourceDictionary
                 {
                     Source = AppTheme.IsDark
-                        ? new Uri(
-                            "pack://application:,,,/KeyClickOverlay;component/Styles/DarkColorPickerStyle.xaml",
-                            UriKind.RelativeOrAbsolute)
-                        : new Uri(
-                            "pack://application:,,,/KeyClickOverlay;component/Styles/LightColorPickerStyle.xaml",
-                            UriKind.RelativeOrAbsolute)
+                        ? new Uri("pack://application:,,,/KeyClickOverlay;component/Styles/DarkColorPickerStyle.xaml", UriKind.RelativeOrAbsolute)
+                        : new Uri("pack://application:,,,/KeyClickOverlay;component/Styles/LightColorPickerStyle.xaml", UriKind.RelativeOrAbsolute)
                 };
 
-                _pixiColorPickerStyle =
-                    (Style)rd["DefaultColorPickerStyle"];
+                _pixiColorPickerStyle = (Style)rd["DefaultColorPickerStyle"];
 
                 picker.Style = _pixiColorPickerStyle;
             }
@@ -5140,14 +4839,10 @@ namespace KeyClickOverlay
             Action onCancelRevert)      // called when user cancels/closes without OK
         {
             // ---------- Dialog surface & themed shell ----------
-            var surfaceKeys = new[] { "LayerFillColorDefaultBrush" };
 
             SolidColorBrush CreateFallbackSurface()
             {
-                var brush = new SolidColorBrush(
-                    AppTheme.IsDark
-                        ? Color.FromRgb(43, 43, 43)
-                        : Color.FromRgb(249, 249, 249))
+                var brush = new SolidColorBrush(AppTheme.IsDark ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249))
                 {
                     Opacity = 0.96
                 };
@@ -5160,7 +4855,7 @@ namespace KeyClickOverlay
 
             var fallbackSurface = CreateFallbackSurface();
 
-            var (dlg, picker) = CreateColorDialogShell(surfaceKeys, fallbackSurface);
+            var (dlg, picker) = CreateColorDialogShell(fallbackSurface);
             if (!string.IsNullOrEmpty(title)) dlg.Title = title;
 
             picker.ShowAlpha = showAlpha;
@@ -5243,8 +4938,7 @@ namespace KeyClickOverlay
             // Style island: isolate Pixi from implicit styles in the surrounding dialog.
             var styleIsland = new Grid();
 
-            styleIsland.Resources.MergedDictionaries.Add(
-                BuildPixiStyleResetDictionary());
+            styleIsland.Resources.MergedDictionaries.Add(BuildPixiStyleResetDictionary());
 
             styleIsland.Children.Add(picker);
 
@@ -5261,11 +4955,7 @@ namespace KeyClickOverlay
             picker.VerticalAlignment = VerticalAlignment.Stretch;
 
             // ---------- WPF-UI window shell ----------------------
-            var (dialogRoot, titleBar) = CreateDialogRoot(
-                dlg,
-                outer,
-                fallbackSurface,
-                stretchContent: true);
+            var (dialogRoot, titleBar) = CreateDialogRoot(dlg, outer, fallbackSurface, stretchContent: true);
 
             // ---------- Theme updates -----------------------------
             void OnThemeChanged(object? sender, EventArgs e)
@@ -5378,9 +5068,9 @@ namespace KeyClickOverlay
 
                     // Brushes that swap with theme
                     SolidColorBrush baseBrush = Brushes.Transparent,
-                                                    hoverBrush = Brushes.Transparent,
-                                                    pressedBrush = Brushes.Transparent,
-                                                    activeBrush = Brushes.Transparent;
+                        hoverBrush = Brushes.Transparent,
+                        pressedBrush = Brushes.Transparent,
+                        activeBrush = Brushes.Transparent;
 
                     // THEME-AWARE update helper
                     void ApplyEyedropperTheme(bool dark)
@@ -5421,11 +5111,11 @@ namespace KeyClickOverlay
                     var root = new FrameworkElementFactory(typeof(Border));
                     root.SetValue(Border.CornerRadiusProperty, new CornerRadius(5));
                     root.SetBinding(Border.BackgroundProperty,
-                            new Binding(nameof(Button.Background)) { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+                             new Binding(nameof(Button.Background)) { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
                     root.SetBinding(Border.BorderBrushProperty,
-                            new Binding(nameof(Button.BorderBrush)) { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+                             new Binding(nameof(Button.BorderBrush)) { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
                     root.SetBinding(Border.BorderThicknessProperty,
-                            new Binding(nameof(Button.BorderThickness)) { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+                             new Binding(nameof(Button.BorderThickness)) { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
                     var cp = new FrameworkElementFactory(typeof(ContentPresenter));
                     cp.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
                     cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
@@ -5752,9 +5442,7 @@ namespace KeyClickOverlay
             }
 
             // Compose initial ARGB using current state
-            var initial = Color.FromArgb(
-                (byte)Math.Round(_backgroundOpacity * 255.0),
-                _backgroundColorRgb.R, _backgroundColorRgb.G, _backgroundColorRgb.B);
+            var initial = Color.FromArgb((byte)Math.Round(_backgroundOpacity * 255.0), _backgroundColorRgb.R, _backgroundColorRgb.G, _backgroundColorRgb.B);
 
             ShowThemedColorDialog(
                 title: "Select background color",
@@ -6061,66 +5749,6 @@ namespace KeyClickOverlay
             return grid;
         }
 
-        /// <summary>Apply a surface background brush to container elements to ensure consistent theming under the dialog content.</summary>
-        private static void ThemeWashContainers(DependencyObject root, string[] keys, Brush fallback, int maxDepth = 8)
-        {
-            if (root == null || maxDepth < 0) return;
-
-            void SetBg(DependencyObject d, DependencyProperty dp)
-            {
-                if (!BindDynamicResource(d, dp, keys))
-                {
-                    if (d is Border b) b.Background = fallback;
-                    else if (d is Panel p) p.Background = fallback;
-                }
-            }
-
-            switch (root)
-            {
-                case Border b:
-                    SetBg(b, Border.BackgroundProperty);
-                    break;
-                case Panel p:
-                    SetBg(p, Panel.BackgroundProperty);
-                    break;
-            }
-
-            int n = VisualTreeHelper.GetChildrenCount(root);
-            for (int i = 0; i < n; i++)
-                ThemeWashContainers(VisualTreeHelper.GetChild(root, i), keys, fallback, maxDepth - 1);
-        }
-
-        /// <summary>Resolve a theme surface color by probing a set of resource keys.</summary>
-        private static Color ResolveSurfaceColor(FrameworkElement scope, string[] keys, Color fallbackColor)
-        {
-            foreach (var key in keys)
-                if (scope.TryFindResource(key) is SolidColorBrush sb)
-                    return sb.Color;
-            return fallbackColor;
-        }
-
-        /// <summary>Apply an opaque/translucent surface brush across a subtree and the dialog chrome.</summary>
-        private static void ApplyOpaqueLayerBackground(Window win, DependencyObject target, string[] keys, Brush fallback)
-        {
-            var fbColor = (fallback as SolidColorBrush)?.Color
-                          ?? (AppTheme.IsDark
-                              ? Color.FromRgb(43, 43, 43)
-                              : Color.FromRgb(249, 249, 249));
-
-            var scope = target as FrameworkElement ?? (FrameworkElement)win;
-            var color = ResolveSurfaceColor(scope, keys, fbColor);
-            var opaque = new SolidColorBrush(color);
-
-            win.Background = opaque;
-
-            switch (target)
-            {
-                case Panel p: p.Background = opaque; break;
-                case Border b: b.Background = opaque; break;
-                case Control c: c.Background = opaque; break;
-            }
-        }
-
         /// <summary>
         /// Builds a resource dictionary that isolates PixiEditor controls
         /// from implicit styles applied by the surrounding dialog.
@@ -6155,7 +5783,7 @@ namespace KeyClickOverlay
             return (ActualWidth, ActualHeight);
         }
 
-        /// <summary>Return the *inner* height (window minus frame inset)used as the baseline for key/mouse scaling.</summary>
+        /// <summary>Return the *inner* height (window minus frame inset) used as the baseline for key/mouse scaling.</summary>
         private double GetHeightRef()
         {
             double insetTB = 2 * FrameTotalInset; // top+bottom
@@ -6635,12 +6263,7 @@ namespace KeyClickOverlay
             double scaleFactor = GetScaleFactor();
 
             // Use the same icon-only key style as media and navigation keys.
-            var (pauseViewbox, pauseScale) = BuildIconOnlyKey(
-                "pause.svg",
-                squareSize,
-                scaleFactor,
-                _fontColorRgb,
-                _keyFillBrush);
+            var (pauseViewbox, pauseScale) = BuildIconOnlyKey("pause.svg", squareSize, scaleFactor, _fontColorRgb, _keyFillBrush);
 
             string modelId = PauseOverlayKeyId;
 
@@ -6725,9 +6348,7 @@ namespace KeyClickOverlay
                 RepeatBehavior = RepeatBehavior.Forever
             };
 
-            pulseX.KeyFrames.Add(new EasingDoubleKeyFrame(
-                1.0,
-                KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            pulseX.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
 
             // Grow
             pulseX.KeyFrames.Add(new EasingDoubleKeyFrame(
@@ -6746,21 +6367,13 @@ namespace KeyClickOverlay
             });
 
             // Rest at the pressed size
-            pulseX.KeyFrames.Add(new DiscreteDoubleKeyFrame(
-                1.0,
-                KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(3200))));
+            pulseX.KeyFrames.Add(new DiscreteDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(3200))));
 
             var pulseY = pulseX.Clone();
 
-            scale.BeginAnimation(
-                ScaleTransform.ScaleXProperty,
-                pulseX,
-                HandoffBehavior.SnapshotAndReplace);
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, pulseX, HandoffBehavior.SnapshotAndReplace);
 
-            scale.BeginAnimation(
-                ScaleTransform.ScaleYProperty,
-                pulseY,
-                HandoffBehavior.SnapshotAndReplace);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, pulseY, HandoffBehavior.SnapshotAndReplace);
         }
 
         /// <summary>
@@ -6771,13 +6384,9 @@ namespace KeyClickOverlay
             if (_pauseIndicatorScale == null)
                 return;
 
-            _pauseIndicatorScale.BeginAnimation(
-                ScaleTransform.ScaleXProperty,
-                null);
+            _pauseIndicatorScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
 
-            _pauseIndicatorScale.BeginAnimation(
-                ScaleTransform.ScaleYProperty,
-                null);
+            _pauseIndicatorScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
 
             _pauseIndicatorScale = null;
         }
@@ -6806,12 +6415,7 @@ namespace KeyClickOverlay
             double squareSize = GetSquareSize();
             double scaleFactor = GetScaleFactor();
 
-            var (playViewbox, playScale) = BuildIconOnlyKey(
-                "play.svg",
-                squareSize,
-                scaleFactor,
-                _fontColorRgb,
-                _keyFillBrush);
+            var (playViewbox, playScale) = BuildIconOnlyKey("play.svg", squareSize, scaleFactor, _fontColorRgb, _keyFillBrush);
 
             playViewbox.HorizontalAlignment = HorizontalAlignment.Center;
             playViewbox.VerticalAlignment = VerticalAlignment.Center;
@@ -6849,23 +6453,13 @@ namespace KeyClickOverlay
                 FillBehavior = FillBehavior.HoldEnd
             };
 
-            scale.BeginAnimation(
-                ScaleTransform.ScaleXProperty,
-                releaseAnimation,
-                HandoffBehavior.SnapshotAndReplace);
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, releaseAnimation, HandoffBehavior.SnapshotAndReplace);
 
-            scale.BeginAnimation(
-                ScaleTransform.ScaleYProperty,
-                releaseAnimation,
-                HandoffBehavior.SnapshotAndReplace);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, releaseAnimation, HandoffBehavior.SnapshotAndReplace);
 
             // Let the normal frame culler remove it after the standard key hang time.
             _activeKeyBoxes[PauseOverlayKeyId] =
-                (
-                    host,
-                    scale,
-                    DateTime.UtcNow.AddMilliseconds(KeyHangMs)
-                );
+                (host, scale, DateTime.UtcNow.AddMilliseconds(KeyHangMs));
 
             SetPillWidthForOrder(_pillOrder);
             UpdatePillVisibility();
@@ -7317,7 +6911,7 @@ namespace KeyClickOverlay
             return sx >= tl.X && sx <= br.X && sy >= tl.Y && sy <= br.Y;
         }
 
-        /// <summary>Sizes the dialog to its content and centers centered under the mouse cursor.</summary>
+        /// <summary>Sizes the dialog to its content and centers it under the mouse cursor.</summary>
         private static void PositionDialogAtCursor(Window dlg, FrameworkElement content, Visual dpiSource)
         {
             // Ensure content has a valid DesiredSize
@@ -7431,21 +7025,13 @@ namespace KeyClickOverlay
         /// <summary>
         /// Shows a themed confirmation dialog using the shared WPF-UI dialog shell.
         /// </summary>
-        private bool ShowModernYesNo(
-            string title,
-            string message,
-            string yes = "Yes",
-            string no = "Cancel",
-            DialogIcon icon = DialogIcon.Question)
+        private bool ShowModernYesNo(string title, string message, string yes = "Yes", string no = "Cancel", DialogIcon icon = DialogIcon.Question)
         {
             bool result = false;
 
             SolidColorBrush CreateFallbackSurface()
             {
-                var brush = new SolidColorBrush(
-                    AppTheme.IsDark
-                        ? Color.FromRgb(43, 43, 43)
-                        : Color.FromRgb(249, 249, 249));
+                var brush = new SolidColorBrush(AppTheme.IsDark ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249));
 
                 if (brush.CanFreeze)
                     brush.Freeze();
@@ -7456,10 +7042,7 @@ namespace KeyClickOverlay
             var fallbackSurface =
                 CreateFallbackSurface();
 
-            var dlg = CreateDialogWindow(
-                title,
-                fallbackSurface,
-                centerOnScreen: true);
+            var dlg = CreateDialogWindow(title, fallbackSurface, centerOnScreen: true);
 
             dlg.Width = 440;
             dlg.MinWidth = 440;
@@ -7485,11 +7068,7 @@ namespace KeyClickOverlay
                 });
 
             // Message
-            var contentGrid =
-                CreateDialogMessageContent(
-                    message,
-                    icon,
-                    fallbackSurface);
+            var contentGrid = CreateDialogMessageContent(message, icon, fallbackSurface);
 
             Grid.SetRow(contentGrid, 0);
             outerGrid.Children.Add(contentGrid);
@@ -7540,14 +7119,9 @@ namespace KeyClickOverlay
             outerGrid.Children.Add(buttonPanel);
 
             var (dialogRoot, titleBar) =
-                CreateDialogRoot(
-                    dlg,
-                    outerGrid,
-                    fallbackSurface);
+                CreateDialogRoot(dlg, outerGrid, fallbackSurface);
 
-            void OnThemeChanged(
-                object? sender,
-                EventArgs e)
+            void OnThemeChanged(object? sender, EventArgs e)
             {
                 var surface =
                     CreateFallbackSurface();
@@ -7591,19 +7165,12 @@ namespace KeyClickOverlay
         /// <summary>
         /// Shows a compact WPF-UI information dialog using the shared KeyClickOverlay dialog shell.
         /// </summary>
-        private void ShowModernInfo(
-            string title,
-            string message,
-            string ok = "OK",
-            DialogIcon icon = DialogIcon.None)
+        private void ShowModernInfo(string title, string message, string ok = "OK", DialogIcon icon = DialogIcon.Info)
         {
             // ---------- Dialog surface ----------
             SolidColorBrush CreateFallbackSurface()
             {
-                var brush = new SolidColorBrush(
-                    AppTheme.IsDark
-                        ? Color.FromRgb(43, 43, 43)
-                        : Color.FromRgb(249, 249, 249));
+                var brush = new SolidColorBrush(AppTheme.IsDark ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249));
 
                 if (brush.CanFreeze)
                     brush.Freeze();
@@ -7614,10 +7181,7 @@ namespace KeyClickOverlay
             var fallbackSurface = CreateFallbackSurface();
 
             // ---------- WPF-UI dialog window ----------
-            var dlg = CreateDialogWindow(
-                title,
-                fallbackSurface,
-                centerOnScreen: true);
+            var dlg = CreateDialogWindow(title, fallbackSurface, centerOnScreen: true);
 
             dlg.Width = 440;
             dlg.MinWidth = 440;
@@ -7645,10 +7209,7 @@ namespace KeyClickOverlay
                 });
 
             // ---------- Shared icon + message content ----------
-            var contentGrid = CreateDialogMessageContent(
-                message,
-                icon,
-                fallbackSurface);
+            var contentGrid = CreateDialogMessageContent(message, icon, fallbackSurface);
 
             Grid.SetRow(contentGrid, 0);
             outerGrid.Children.Add(contentGrid);
@@ -7675,10 +7236,7 @@ namespace KeyClickOverlay
             outerGrid.Children.Add(buttonPanel);
 
             // ---------- Shared WPF-UI shell ----------
-            var (dialogRoot, titleBar) = CreateDialogRoot(
-                dlg,
-                outerGrid,
-                fallbackSurface);
+            var (dialogRoot, titleBar) = CreateDialogRoot(dlg, outerGrid, fallbackSurface);
 
             // ---------- Theme switching ----------
             void OnThemeChanged(object? sender, EventArgs e)
@@ -7687,9 +7245,7 @@ namespace KeyClickOverlay
 
                 ApplyWpfUiDialogTheme(dlg);
 
-                NativeMethods.TryApplyImmersiveDarkTitleBar(
-                    dlg,
-                    AppTheme.IsDark);
+                NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, AppTheme.IsDark);
 
                 dlg.Background = surface;
                 dialogRoot.Background = surface;
@@ -7738,21 +7294,14 @@ namespace KeyClickOverlay
         /// Returns true only when the acknowledgement button is clicked.
         /// Closing the window or pressing Escape returns false.
         /// </summary>
-        private bool ShowModernAcknowledgement(
-            string title,
-            string message,
-            string acknowledgeText = "OK",
-            DialogIcon icon = DialogIcon.None)
+        private bool ShowModernAcknowledgement(string title, string message, string acknowledgeText = "OK", DialogIcon icon = DialogIcon.Info)
         {
             bool acknowledged = false;
 
             // ---------- Dialog surface ----------
             SolidColorBrush CreateFallbackSurface()
             {
-                var brush = new SolidColorBrush(
-                    AppTheme.IsDark
-                        ? Color.FromRgb(43, 43, 43)
-                        : Color.FromRgb(249, 249, 249));
+                var brush = new SolidColorBrush(AppTheme.IsDark ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249));
 
                 if (brush.CanFreeze)
                     brush.Freeze();
@@ -7763,10 +7312,7 @@ namespace KeyClickOverlay
             var fallbackSurface = CreateFallbackSurface();
 
             // ---------- WPF-UI dialog window ----------
-            var dlg = CreateDialogWindow(
-                title,
-                fallbackSurface,
-                centerOnScreen: true);
+            var dlg = CreateDialogWindow(title, fallbackSurface, centerOnScreen: true);
 
             dlg.Width = 440;
             dlg.MinWidth = 440;
@@ -7794,10 +7340,7 @@ namespace KeyClickOverlay
                 });
 
             // ---------- Shared icon + message content ----------
-            var contentGrid = CreateDialogMessageContent(
-                message,
-                icon,
-                fallbackSurface);
+            var contentGrid = CreateDialogMessageContent(message, icon, fallbackSurface);
 
             Grid.SetRow(contentGrid, 0);
             outerGrid.Children.Add(contentGrid);
@@ -7824,10 +7367,7 @@ namespace KeyClickOverlay
             outerGrid.Children.Add(buttonPanel);
 
             // ---------- Shared WPF-UI shell ----------
-            var (dialogRoot, titleBar) = CreateDialogRoot(
-                dlg,
-                outerGrid,
-                fallbackSurface);
+            var (dialogRoot, titleBar) = CreateDialogRoot(dlg, outerGrid, fallbackSurface);
 
             // ---------- Theme switching ----------
             void OnThemeChanged(object? sender, EventArgs e)
@@ -7836,9 +7376,7 @@ namespace KeyClickOverlay
 
                 ApplyWpfUiDialogTheme(dlg);
 
-                NativeMethods.TryApplyImmersiveDarkTitleBar(
-                    dlg,
-                    AppTheme.IsDark);
+                NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, AppTheme.IsDark);
 
                 dlg.Background = surface;
                 dialogRoot.Background = surface;
@@ -7899,19 +7437,12 @@ namespace KeyClickOverlay
         /// <summary>
         /// Shows a themed auto-closing information dialog using the shared WPF-UI dialog shell.
         /// </summary>
-        private void ShowModernInfoAuto(
-            string title,
-            string message,
-            int milliseconds = 2500,
-            DialogIcon icon = DialogIcon.Info)
+        private void ShowModernInfoAuto(string title, string message, int milliseconds = 2500, DialogIcon icon = DialogIcon.Info)
         {
             // ---------- Dialog surface ----------
             SolidColorBrush CreateFallbackSurface()
             {
-                var brush = new SolidColorBrush(
-                    AppTheme.IsDark
-                        ? Color.FromRgb(43, 43, 43)
-                        : Color.FromRgb(249, 249, 249));
+                var brush = new SolidColorBrush(AppTheme.IsDark ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249));
 
                 if (brush.CanFreeze)
                     brush.Freeze();
@@ -7922,10 +7453,7 @@ namespace KeyClickOverlay
             var fallbackSurface = CreateFallbackSurface();
 
             // ---------- WPF-UI dialog window ----------
-            var dlg = CreateDialogWindow(
-                title,
-                fallbackSurface,
-                centerOnScreen: true);
+            var dlg = CreateDialogWindow(title, fallbackSurface, centerOnScreen: true);
 
             dlg.Width = 440;
             dlg.MinWidth = 440;
@@ -7935,18 +7463,12 @@ namespace KeyClickOverlay
             dlg.SizeToContent = SizeToContent.Height;
 
             // ---------- Shared icon + message content ----------
-            var contentGrid = CreateDialogMessageContent(
-                message,
-                icon,
-                fallbackSurface);
+            var contentGrid = CreateDialogMessageContent(message, icon, fallbackSurface);
 
             contentGrid.Margin = new Thickness(20, 18, 20, 28);
 
             // ---------- Shared WPF-UI shell ----------
-            var (dialogRoot, titleBar) = CreateDialogRoot(
-                dlg,
-                contentGrid,
-                fallbackSurface);
+            var (dialogRoot, titleBar) = CreateDialogRoot(dlg, contentGrid, fallbackSurface);
 
             // ---------- Theme switching ----------
             void OnThemeChanged(object? sender, EventArgs e)
@@ -7955,9 +7477,7 @@ namespace KeyClickOverlay
 
                 ApplyWpfUiDialogTheme(dlg);
 
-                NativeMethods.TryApplyImmersiveDarkTitleBar(
-                    dlg,
-                    AppTheme.IsDark);
+                NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, AppTheme.IsDark);
 
                 dlg.Background = surface;
                 dialogRoot.Background = surface;
@@ -8019,10 +7539,7 @@ namespace KeyClickOverlay
             // ---------- Dialog surface ----------
             SolidColorBrush CreateFallbackSurface()
             {
-                var brush = new SolidColorBrush(
-                    AppTheme.IsDark
-                        ? Color.FromRgb(43, 43, 43)
-                        : Color.FromRgb(249, 249, 249));
+                var brush = new SolidColorBrush(AppTheme.IsDark ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249));
 
                 if (brush.CanFreeze)
                     brush.Freeze();
@@ -8033,10 +7550,7 @@ namespace KeyClickOverlay
             var fallbackSurface = CreateFallbackSurface();
 
             // ---------- WPF-UI dialog window ----------
-            var dlg = CreateDialogWindow(
-                "Transparent-mode",
-                fallbackSurface,
-                centerOnScreen: true);
+            var dlg = CreateDialogWindow("Transparent-mode", fallbackSurface, centerOnScreen: true);
 
             dlg.Width = 500;
             dlg.MinWidth = 500;
@@ -8059,17 +7573,29 @@ namespace KeyClickOverlay
                 Margin = new Thickness(20, 18, 20, 8)
             };
 
-            contentGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            contentGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var icon = BuildDialogIcon(DialogIcon.Info);
+            Grid.SetColumn(icon, 0);
+            contentGrid.Children.Add(icon);
+
+            var messageGrid = new Grid
+            {
+                Margin = new Thickness(16, 2, 0, 0)
+            };
+
+            messageGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            messageGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             var body = new TextBlock
             {
                 TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 440,
+                MaxWidth = 388,
                 FontSize = 14
             };
 
-            body.Inlines.Add(new Run("When enabled, the window ignores mouse input. "));
+            body.Inlines.Add(new Run("When enabled, the window ignores mouse input.\n"));
             body.Inlines.Add(new Run("To turn it off, press "));
             body.Inlines.Add(new Run(GetTransparentHotkeyLabel()) { FontWeight = FontWeights.SemiBold });
             body.Inlines.Add(new Run(" or click the "));
@@ -8085,8 +7611,11 @@ namespace KeyClickOverlay
             Grid.SetRow(body, 0);
             Grid.SetRow(dontShow, 1);
 
-            contentGrid.Children.Add(body);
-            contentGrid.Children.Add(dontShow);
+            messageGrid.Children.Add(body);
+            messageGrid.Children.Add(dontShow);
+
+            Grid.SetColumn(messageGrid, 1);
+            contentGrid.Children.Add(messageGrid);
 
             Grid.SetRow(contentGrid, 0);
             outerGrid.Children.Add(contentGrid);
@@ -8123,10 +7652,7 @@ namespace KeyClickOverlay
             outerGrid.Children.Add(buttonPanel);
 
             // ---------- Shared WPF-UI shell ----------
-            var (dialogRoot, titleBar) = CreateDialogRoot(
-                dlg,
-                outerGrid,
-                fallbackSurface);
+            var (dialogRoot, titleBar) = CreateDialogRoot(dlg, outerGrid, fallbackSurface);
 
             // ---------- Theme switching ----------
             void OnThemeChanged(object? sender, EventArgs e)
@@ -8135,9 +7661,7 @@ namespace KeyClickOverlay
 
                 ApplyWpfUiDialogTheme(dlg);
 
-                NativeMethods.TryApplyImmersiveDarkTitleBar(
-                    dlg,
-                    AppTheme.IsDark);
+                NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, AppTheme.IsDark);
 
                 dlg.Background = surface;
                 dialogRoot.Background = surface;
@@ -8270,19 +7794,12 @@ namespace KeyClickOverlay
         /// Generic shortcut picker dialog used by all configurable shortcuts.
         /// Requires at least one modifier key to reduce accidental global shortcut conflicts.
         /// </summary>
-        private void ChangeShortcutViaDialog(
-            string titleText,
-            string currentShortcutLabel,
-            Action<Keys, ModifierKeys> applyShortcut,
-            Action? afterSave = null)
+        private void ChangeShortcutViaDialog(string titleText, string currentShortcutLabel, Action<Keys, ModifierKeys> applyShortcut, Action? afterSave = null)
         {
             // ---------- Dialog surface ----------
             SolidColorBrush CreateFallbackSurface()
             {
-                var brush = new SolidColorBrush(
-                    AppTheme.IsDark
-                        ? Color.FromRgb(43, 43, 43)
-                        : Color.FromRgb(249, 249, 249));
+                var brush = new SolidColorBrush(AppTheme.IsDark ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249));
 
                 if (brush.CanFreeze)
                     brush.Freeze();
@@ -8293,10 +7810,7 @@ namespace KeyClickOverlay
             var fallbackSurface = CreateFallbackSurface();
 
             // ---------- WPF-UI dialog window ----------
-            var dlg = CreateDialogWindow(
-                titleText,
-                fallbackSurface,
-                centerOnScreen: true);
+            var dlg = CreateDialogWindow(titleText, fallbackSurface, centerOnScreen: true);
 
             dlg.Width = 440;
             dlg.MinWidth = 440;
@@ -8312,8 +7826,20 @@ namespace KeyClickOverlay
                 Margin = new Thickness(20, 18, 20, 28)
             };
 
-            contentGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            contentGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var icon = BuildDialogIcon(DialogIcon.Info);
+            Grid.SetColumn(icon, 0);
+            contentGrid.Children.Add(icon);
+
+            var messageGrid = new Grid
+            {
+                Margin = new Thickness(16, 2, 0, 0)
+            };
+
+            messageGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            messageGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             var body = new TextBlock
             {
@@ -8321,7 +7847,7 @@ namespace KeyClickOverlay
                        "Use at least one of Ctrl, Shift or Alt.\n" +
                        "Press Esc to cancel.",
                 TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 400
+                MaxWidth = 340
             };
 
             var current = new TextBlock
@@ -8334,14 +7860,14 @@ namespace KeyClickOverlay
             Grid.SetRow(body, 0);
             Grid.SetRow(current, 1);
 
-            contentGrid.Children.Add(body);
-            contentGrid.Children.Add(current);
+            messageGrid.Children.Add(body);
+            messageGrid.Children.Add(current);
+
+            Grid.SetColumn(messageGrid, 1);
+            contentGrid.Children.Add(messageGrid);
 
             // ---------- Shared WPF-UI shell ----------
-            var (dialogRoot, titleBar) = CreateDialogRoot(
-                dlg,
-                contentGrid,
-                fallbackSurface);
+            var (dialogRoot, titleBar) = CreateDialogRoot(dlg, contentGrid, fallbackSurface);
 
             // ---------- Theme switching ----------
             void OnThemeChanged(object? sender, EventArgs e)
@@ -8350,9 +7876,7 @@ namespace KeyClickOverlay
 
                 ApplyWpfUiDialogTheme(dlg);
 
-                NativeMethods.TryApplyImmersiveDarkTitleBar(
-                    dlg,
-                    AppTheme.IsDark);
+                NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, AppTheme.IsDark);
 
                 dlg.Background = surface;
                 dialogRoot.Background = surface;
@@ -8451,7 +7975,7 @@ namespace KeyClickOverlay
             {
                 var mods = GetHeldModifiersFromState();
 
-                // Ctrl+Space = toggle between current preset and previous preset.
+                // Preset switch shortcut
                 if (_prefs.PresetToggleHotkeyEnabled &&
                     mods == _prefs.PresetSwitchHotkeyModifiers &&
                     e.KeyCode == _prefs.PresetSwitchHotkeyKey)
@@ -8461,6 +7985,14 @@ namespace KeyClickOverlay
                         TogglePreviousPreset();
                     }), System.Windows.Threading.DispatcherPriority.Background);
 
+                    return;
+                }
+
+                // Toggle the preset-switch shortcut on/off.
+                if (mods == _prefs.PresetSwitchToggleHotkeyModifiers &&
+                    e.KeyCode == _prefs.PresetSwitchToggleHotkeyKey)
+                {
+                    Dispatcher.Invoke(TogglePresetToggleHotkeyEnabled);
                     return;
                 }
 
@@ -8550,8 +8082,7 @@ namespace KeyClickOverlay
                 return;
             }
 
-            // Ctrl+Alt+Shift+F11: clear all currently drawn overlay keys/buttons.
-            // This is a hidden overlay-maintenance shortcut, so it is handled before key drawing.
+            // Clear all currently displayed overlay keys before key drawing.
             if (GetHeldModifiersFromState() == _prefs.ClearOverlayHotkeyModifiers &&
                 e.KeyCode == _prefs.ClearOverlayHotkeyKey)
             {
@@ -8567,7 +8098,7 @@ namespace KeyClickOverlay
             if (GetHeldModifiersFromState() == _prefs.PauseOverlayHotkeyModifiers &&
                 e.KeyCode == _prefs.PauseOverlayHotkeyKey)
             {
-                // Ignore keyboard auto-repeat while F11 remains held.
+                // Ignore keyboard auto-repeat while the pause shortcut remains held.
                 if (_pauseShortcutHeld)
                     return;
 
@@ -8582,11 +8113,7 @@ namespace KeyClickOverlay
                         _overlayPaused = false;
                         ReplacePauseWithPressedPlayKey();
 
-                        ShowModernInfoAuto(
-                            "Overlay resumed",
-                            "Mouse and keyboard input display has resumed.",
-                            milliseconds: 1500,
-                            icon: DialogIcon.Info);
+                        ShowModernInfoAuto("Overlay resumed", "Mouse and keyboard input display has resumed.", milliseconds: 1500, icon: DialogIcon.Info);
                     }
                     else
                     {
@@ -8712,13 +8239,11 @@ namespace KeyClickOverlay
                 // NumPad: digits use the centered NumPad layout; operators keep baseline layout
                 if (IsNumPadOperatorKey(e.KeyCode))
                 {
-                    (outerViewbox, scale) = BuildNumPadOperatorKey(
-                        displayKey, squareSize, scaleFactor, _keyTextBrush, _keyFillBrush);
+                    (outerViewbox, scale) = BuildNumPadOperatorKey(displayKey, squareSize, scaleFactor, _keyTextBrush, _keyFillBrush);
                 }
                 else
                 {
-                    (outerViewbox, scale) = BuildNumPadKey(
-                        displayKey, squareSize, scaleFactor, _keyTextBrush, _keyFillBrush);
+                    (outerViewbox, scale) = BuildNumPadKey(displayKey, squareSize, scaleFactor, _keyTextBrush, _keyFillBrush);
                 }
             }
             else if (_specialKeyIconMap.TryGetValue(displayKey.ToLowerInvariant(), out string? specialIconFile) && specialIconFile is not null)
@@ -9583,10 +9108,7 @@ namespace KeyClickOverlay
             grid.Children.Add(header);
 
             string digit = displayKey.Replace("Numpad", "", StringComparison.OrdinalIgnoreCase);
-            var centeredDigit = BuildCenteredGlyphElement(
-                digit,
-                squareSize * 0.75 * KeyStyle.GlyphHeightFactor_NumPad,
-                textBrush);
+            var centeredDigit = BuildCenteredGlyphElement(digit, squareSize * 0.75 * KeyStyle.GlyphHeightFactor_NumPad, textBrush);
 
             // ↑ move the digit slightly up within the bottom row
             double rowHeight = squareSize * 0.75;
@@ -9620,12 +9142,7 @@ namespace KeyClickOverlay
         }
 
         /// <summary>Builds a NumPad-operator tile with a "NumPad" header and a baseline-aligned operator face.</summary>
-        private static (FrameworkElement outer, ScaleTransform scale) BuildNumPadOperatorKey(
-            string face,
-            double squareSize,
-            double scaleFactor,
-            Brush textBrush,
-            Brush keyFillBrush)
+        private static (FrameworkElement outer, ScaleTransform scale) BuildNumPadOperatorKey(string face, double squareSize, double scaleFactor, Brush textBrush, Brush keyFillBrush)
         {
             var scale = new ScaleTransform(1.0, 1.0);
 
@@ -9642,10 +9159,7 @@ namespace KeyClickOverlay
             };
 
             // Baseline-aligned operator face (reuses existing baseline path for sign keys)
-            var operatorFace = BuildBaselineAlignedGlyphElement(
-                text: face,
-                targetCapHeight: squareSize * KeyStyle.GlyphHeightFactor_Normal,
-                textBrush: textBrush);
+            var operatorFace = BuildBaselineAlignedGlyphElement(text: face, targetCapHeight: squareSize * KeyStyle.GlyphHeightFactor_Normal, textBrush: textBrush);
 
             // Subtle vertical nudge to match keypad composition
             double rowHeight = squareSize * 0.75;
@@ -9822,10 +9336,7 @@ namespace KeyClickOverlay
                       text: displayKey,
                       targetCapHeight: squareSize * KeyStyle.GlyphHeightFactor_Normal, // match letter cap-height
                       textBrush: textBrush)
-                : BuildCenteredGlyphElement(
-                      text: displayKey,
-                      targetGlyphHeight: squareSize * KeyStyle.GlyphHeightFactor_Normal,
-                      textBrush: textBrush);
+                : BuildCenteredGlyphElement(text: displayKey, targetGlyphHeight: squareSize * KeyStyle.GlyphHeightFactor_Normal, textBrush: textBrush);
 
             // Non-visual centering host (prevents stretch & rounding bias)
             var centeredHost = new Grid
