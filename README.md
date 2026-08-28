@@ -1,3 +1,5 @@
+![KeyClickOverlay](screenshots/keyclickoverlay-hero.png)
+
 # KeyClickOverlay
 
 *A small Windows app that displays keyboard and mouse input on screen with a flexible UI that can be freely positioned, resized, and customized.*
@@ -31,8 +33,8 @@ Install KeyClickOverlay from the **[Microsoft Store](https://apps.microsoft.com/
 - **Customizable appearance**  
   Adjust colors, opacity, background, padding, and corner radius to match your recording setup.
 
-- **Multiple presets**  
-  Save different layouts, positions, sizes, and visual styles, and switch between them instantly.
+- **Up to 10 presets**   
+  Save up to 10 different layouts, positions, sizes, and visual styles, and switch between them instantly.
 
 - **Multi-monitor support**  
   Easily move the overlay between monitors and include the selected monitor in your presets.
