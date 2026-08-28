@@ -77,19 +77,19 @@ Show or hide mouse input in the overlay.
 
 ### Set mouse color
 
-Customize the color used for mouse input.
+Customize the mouse color. The color picker allows you to pick a color directly from the screen using its eyedropper tool.
 
 ![Set mouse color](screenshots/set-mouse-color.png)
 
 ### Set font color
 
-Customize the color of displayed text.
+Customize the keys' font color.
 
 ![Set font color](screenshots/set-font-color.png)
 
 ### Set key color
 
-Customize the background color of displayed keys.
+Customize the keys' background color.
 
 ![Set key color](screenshots/set-key-color.png)
 
@@ -101,31 +101,31 @@ Show or hide the overlay background.
 
 ### Mouse only
 
-Display mouse input without showing keyboard input.
+Apply the background only to the mouse input.
 
 ![Mouse only mode](screenshots/mouse-only.png)
 
 ### Set background color
 
-Customize the overlay background color.
+Customize the background color.
 
 ![Set background color](screenshots/set-background-color.png)
 
 ### Background padding
 
-Adjust the space around the displayed input.
+Adjust the size of the background around the displayed input.
 
 ![Adjust background padding](screenshots/padding.png)
 
 ### Corner radius
 
-Adjust how rounded the overlay background corners are.
+Adjust the corner radius of the background.
 
 ![Adjust corner radius](screenshots/corner-radius.png)
 
 ### Customize Shortcuts
 
-Configure keyboard shortcuts for frequently used actions.
+Customize keyboard shortcuts for frequently used actions.
 
 ![Customize keyboard shortcuts](screenshots/shortcuts.png)
 
@@ -137,7 +137,7 @@ Quickly access Transparent Mode, Pause, and Clear from the Windows taskbar.
 
 ### Privacy notice
 
-See how KeyClickOverlay handles keyboard and mouse input.
+The privacy notice is shown when KeyClickOverlay is launched for the first time.
 
 ![KeyClickOverlay privacy notice](screenshots/privacy-notice.png)
 
