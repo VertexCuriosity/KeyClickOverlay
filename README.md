@@ -12,7 +12,23 @@ Freely position the overlay anywhere on screen, resize it precisely, create mult
 
 ## Installation
 
+KeyClickOverlay can be installed from the Microsoft Store or downloaded as a portable version from GitHub.
+
+### Microsoft Store
+
 Install KeyClickOverlay from the **[Microsoft Store](https://apps.microsoft.com/detail/9ntfch58xzzs?hl=en-US&gl=NL)**.
+
+### Portable version
+
+Alternatively, download the latest portable version from **[GitHub Releases](https://github.com/VertexCuriosity/KeyClickOverlay/releases/latest)**.
+
+Download the `KeyClickOverlay-*-win-x64.zip` file, extract the ZIP, and run `KeyClickOverlay.exe`.
+
+The portable version is self-contained and does not require the Microsoft Store or a separate .NET installation. Keep all files in the extracted folder together, as they are required by the application.
+
+You can create a shortcut to `KeyClickOverlay.exe` and place or pin it wherever you prefer for easier access.
+
+Windows may display a SmartScreen warning because the portable version is not digitally signed.
 
 ## Requirements
 
