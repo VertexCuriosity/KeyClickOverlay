@@ -43,8 +43,103 @@ Install KeyClickOverlay from the **[Microsoft Store](https://apps.microsoft.com/
   Quickly toggle Transparent Mode, clear the key display, or close the application directly from the Windows taskbar.
 
 ## Preview
+The screenshots below provide an overview of KeyClickOverlay's main controls, customization options, and workflow features.
 
-*Screenshots will be added soon.*
+### Context menu
+
+Access all KeyClickOverlay settings and controls from one compact context menu.
+
+![KeyClickOverlay context menu](screenshots/context-menu-overview.png)
+
+### Presets
+
+Save and quickly switch between up to 10 different overlay configurations.
+
+![KeyClickOverlay presets](screenshots/presets.png)
+
+### Transparent Mode
+
+Make the overlay click-through while keeping it visible.
+
+![KeyClickOverlay Transparent Mode](screenshots/transparent-mode.png)
+
+### Pause KeyClickOverlay
+
+Temporarily pause the input display without closing the overlay.
+
+![Pause KeyClickOverlay](screenshots/pause-keyclickoverlay.png)
+
+### Toggle Mouse
+
+Show or hide mouse input in the overlay.
+
+![Toggle mouse input](screenshots/toggle-mouse.png)
+
+### Set mouse color
+
+Customize the color used for mouse input.
+
+![Set mouse color](screenshots/set-mouse-color.png)
+
+### Set font color
+
+Customize the color of displayed text.
+
+![Set font color](screenshots/set-font-color.png)
+
+### Set key color
+
+Customize the background color of displayed keys.
+
+![Set key color](screenshots/set-key-color.png)
+
+### Toggle Background
+
+Show or hide the overlay background.
+
+![Toggle overlay background](screenshots/toggle-background.png)
+
+### Mouse only
+
+Display mouse input without showing keyboard input.
+
+![Mouse only mode](screenshots/mouse-only.png)
+
+### Set background color
+
+Customize the overlay background color.
+
+![Set background color](screenshots/set-background-color.png)
+
+### Background padding
+
+Adjust the space around the displayed input.
+
+![Adjust background padding](screenshots/padding.png)
+
+### Corner radius
+
+Adjust how rounded the overlay background corners are.
+
+![Adjust corner radius](screenshots/corner-radius.png)
+
+### Customize Shortcuts
+
+Configure keyboard shortcuts for frequently used actions.
+
+![Customize keyboard shortcuts](screenshots/shortcuts.png)
+
+### Taskbar controls
+
+Quickly access Transparent Mode, Pause, and Clear from the Windows taskbar.
+
+![KeyClickOverlay taskbar controls](screenshots/taskbar-menu.png)
+
+### Privacy notice
+
+See how KeyClickOverlay handles keyboard and mouse input.
+
+![KeyClickOverlay privacy notice](screenshots/privacy-notice.png)
 
 ## Documentation
 
