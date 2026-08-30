@@ -11,6 +11,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 ### Changed
 
 - window recorgition
+- all earlier presets save need to be overwritten
 
 <br>
 

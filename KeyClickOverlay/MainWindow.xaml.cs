@@ -477,10 +477,23 @@ namespace KeyClickOverlay
         private sealed class PresetData
         {
             // --- Window geometry & position ---
-            public double WindowWidth { get; set; }   // px
-            public double WindowHeight { get; set; }  // px
-            public double WindowLeft { get; set; }    // screen X (px)
-            public double WindowTop { get; set; }     // screen Y (px)
+            public double WindowWidth { get; set; }   // Window width (DIPs)
+            public double WindowHeight { get; set; }  // Window height (DIPs)
+            public double WindowLeft { get; set; }    // Window X position (DIPs)
+            public double WindowTop { get; set; }     // Window Y position (DIPs)
+
+            // --- Monitor-aware placement ---
+            public string? MonitorDeviceName { get; set; }  // Windows device name of the monitor
+            public double? MonitorRelativeX { get; set; }  // Relative horizontal position within the monitor work area (0.0–1.0)
+            public double? MonitorRelativeY { get; set; }  // Relative vertical position within the monitor work area (0.0–1.0)
+
+            public double? MonitorLeft { get; set; }    // Monitor work-area left edge (DIPs)
+            public double? MonitorTop { get; set; }     // Monitor work-area top edge (DIPs)
+            public double? MonitorWidth { get; set; }   // Monitor work-area width (DIPs)
+            public double? MonitorHeight { get; set; }  // Monitor work-area height (DIPs)
+
+            public double? DpiScaleX { get; set; }  // Horizontal DPI scale when the preset was saved
+            public double? DpiScaleY { get; set; }  // Vertical DPI scale when the preset was saved
 
             // --- Modes / toggles ---
             public bool MouseEnabled { get; set; }          // show mouse visual + process mouse input
@@ -548,6 +561,20 @@ namespace KeyClickOverlay
                 ? new Rect(Left, Top, width, height)
                 : RestoreBounds;
 
+            Point windowTopLeftPx = PointToScreen(new Point(0, 0));
+            var dpi = VisualTreeHelper.GetDpi(this);
+
+            double windowWidthPx = normal.Width * dpi.DpiScaleX;
+            double windowHeightPx = normal.Height * dpi.DpiScaleY;
+
+            var monitor = GetCurrentMonitorInfo();
+
+            double availableWidth = Math.Max(1.0, monitor.WorkArea.Width - windowWidthPx);
+            double availableHeight = Math.Max(1.0, monitor.WorkArea.Height - windowHeightPx);
+
+            double relativeX = (windowTopLeftPx.X - monitor.WorkArea.Left) / availableWidth;
+            double relativeY = (windowTopLeftPx.Y - monitor.WorkArea.Top) / availableHeight;
+
             return new PresetData
             {
                 WindowWidth = Math.Max(1.0, width),
@@ -556,6 +583,17 @@ namespace KeyClickOverlay
                 // Position (older presets may deserialize to 0)
                 WindowLeft = normal.Left,
                 WindowTop = normal.Top,
+
+                // Monitor-aware placement
+                MonitorDeviceName = monitor.DeviceName,
+                MonitorRelativeX = relativeX,
+                MonitorRelativeY = relativeY,
+                MonitorLeft = monitor.WorkArea.Left,
+                MonitorTop = monitor.WorkArea.Top,
+                MonitorWidth = monitor.WorkArea.Width,
+                MonitorHeight = monitor.WorkArea.Height,
+                DpiScaleX = monitor.DpiScaleX,
+                DpiScaleY = monitor.DpiScaleY,
 
                 MouseEnabled = _mouseEnabled,
                 BackgroundEnabled = _backgroundEnabled,
@@ -595,13 +633,36 @@ namespace KeyClickOverlay
             Width = Math.Max(this.MinWidth, p.WindowWidth);
             Height = Math.Max(this.MinHeight, p.WindowHeight);
 
-            // Position (older presets may have 0/0)
-            if (p.WindowLeft != 0 || p.WindowTop != 0)
+            // Position
+            var monitor = FindMonitor(p.MonitorDeviceName);
+
+            if (monitor != null && p.MonitorRelativeX.HasValue && p.MonitorRelativeY.HasValue)
             {
+                // Restore relative to the same monitor
+                var workArea = GetMonitorWorkArea(monitor);
+                var dpi = VisualTreeHelper.GetDpi(this);
+
+                double windowWidthPx = Width * dpi.DpiScaleX;
+                double windowHeightPx = Height * dpi.DpiScaleY;
+                double availableWidth = Math.Max(1.0, workArea.Width - windowWidthPx);
+                double availableHeight = Math.Max(1.0, workArea.Height - windowHeightPx);
+
+                double targetLeftPx = workArea.Left + (availableWidth * p.MonitorRelativeX.Value);
+                double targetTopPx = workArea.Top + (availableHeight * p.MonitorRelativeY.Value);
+
+                Point targetLocal = PointFromScreen(new Point(targetLeftPx, targetTopPx));
+
+                Left += targetLocal.X;
+                Top += targetLocal.Y;
+            }
+            else if (p.WindowLeft != 0 || p.WindowTop != 0)
+            {
+                // Fall back to absolute position for older presets
                 Left = p.WindowLeft;
                 Top = p.WindowTop;
-                ClampWindowToVirtualScreen(); // keep fully visible
             }
+
+            ClampWindowToVirtualScreen(); // keep visible
 
             // Toggles / modes
             ApplyMouseEnabled(p.MouseEnabled);
@@ -642,26 +703,74 @@ namespace KeyClickOverlay
 
         // === Window placement & bounds ===
 
-        /// <summary>Ensures the window stays visible on the current virtual desktop area (handles monitor/DPI/layout changes).</summary>
+        /// <summary>Finds a connected monitor by its Windows device name.</summary>
+        private static WinForms.Screen? FindMonitor(string? deviceName)
+        {
+            if (string.IsNullOrWhiteSpace(deviceName)) return null;
+
+            return WinForms.Screen.AllScreens.FirstOrDefault(
+                screen => string.Equals(screen.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>Returns a monitor work area in physical screen pixels.</summary>
+        private static Rect GetMonitorWorkArea(WinForms.Screen screen)
+        {
+            var workArea = screen.WorkingArea;
+
+            return new Rect(
+                workArea.Left,
+                workArea.Top,
+                workArea.Width,
+                workArea.Height);
+        }
+
+        /// <summary>Returns the work area and DPI scale of the monitor containing KeyClickOverlay.</summary>
+        private (string DeviceName, Rect WorkArea, double DpiScaleX, double DpiScaleY) GetCurrentMonitorInfo()
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            var screen = WinForms.Screen.FromHandle(hwnd);
+            var workArea = GetMonitorWorkArea(screen);
+            var dpi = VisualTreeHelper.GetDpi(this);
+
+            return (screen.DeviceName, workArea, dpi.DpiScaleX, dpi.DpiScaleY);
+        }
+
+        /// <summary>Ensures the window stays visible on a connected monitor (handles monitor/DPI/layout changes).</summary>
         private void ClampWindowToVirtualScreen()
         {
-            // Virtual desktop bounds across all monitors
-            double vx = SystemParameters.VirtualScreenLeft;
-            double vy = SystemParameters.VirtualScreenTop;
-            double vw = SystemParameters.VirtualScreenWidth;
-            double vh = SystemParameters.VirtualScreenHeight;
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == 0) return;
+            if (!NativeMethods.GetWindowRect(hwnd, out var rect)) return;
 
-            // Clamp Left/Top so the window's title/body stays reachable
-            double minVisible = 24; // require at least 24px visible
+            const int minVisible = 24;
 
-            double maxLeft = vx + vw - minVisible;
-            double maxTop = vy + vh - minVisible;
+            int windowWidth = rect.Right - rect.Left;
+            int windowHeight = rect.Bottom - rect.Top;
 
-            if (double.IsNaN(Left)) Left = vx;
-            if (double.IsNaN(Top)) Top = vy;
+            // Keep the current position if enough of the window is visible on any connected monitor
+            foreach (var screen in WinForms.Screen.AllScreens)
+            {
+                var workArea = screen.WorkingArea;
 
-            Left = Math.Min(Math.Max(Left, vx - (Width - minVisible)), maxLeft);
-            Top = Math.Min(Math.Max(Top, vy - (Height - minVisible)), maxTop);
+                int visibleWidth = Math.Min(rect.Right, workArea.Right) - Math.Max(rect.Left, workArea.Left);
+                int visibleHeight = Math.Min(rect.Bottom, workArea.Bottom) - Math.Max(rect.Top, workArea.Top);
+
+                if (visibleWidth >= minVisible && visibleHeight >= minVisible)
+                    return;
+            }
+
+            // Move an off-screen window onto the nearest connected monitor
+            var windowRect = new System.Drawing.Rectangle(rect.Left, rect.Top, windowWidth, windowHeight);
+            var nearestScreen = WinForms.Screen.FromRectangle(windowRect);
+            var nearestWorkArea = nearestScreen.WorkingArea;
+
+            int maxLeft = Math.Max(nearestWorkArea.Left, nearestWorkArea.Right - windowWidth);
+            int maxTop = Math.Max(nearestWorkArea.Top, nearestWorkArea.Bottom - windowHeight);
+
+            int targetLeft = Math.Clamp(rect.Left, nearestWorkArea.Left, maxLeft);
+            int targetTop = Math.Clamp(rect.Top, nearestWorkArea.Top, maxTop);
+
+            NativeMethods.MoveWindowToScreenPoint(this, targetLeft, targetTop);
         }
 
         /// <summary>Move the window by a small delta in DIPs, then clamp to visible bounds.</summary>

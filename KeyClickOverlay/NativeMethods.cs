@@ -56,6 +56,20 @@ namespace KeyClickOverlay
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         internal static partial int MessageBeep(uint uType);
 
+        /// <summary>Returns the window bounds in physical screen coordinates.</summary>
+        [LibraryImport("user32.dll", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool GetWindowRect(nint hWnd, out RECT lpRect);
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal partial struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
 
         // === Eyedropper: screen DC & pixel ===
 
@@ -198,6 +212,21 @@ namespace KeyClickOverlay
                 HWND_TOPMOST,
                 0, 0, 0, 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOSENDCHANGING);
+        }
+
+        /// <summary>Moves a window to a physical screen position without changing its size or activation state.</summary>
+        public static void MoveWindowToScreenPoint(Window window, int x, int y)
+        {
+            if (window is null) return;
+
+            var hwnd = new WindowInteropHelper(window).Handle;
+            if (hwnd == 0) return;
+
+            _ = SetWindowPos(
+                hwnd,
+                0,
+                x, y, 0, 0,
+                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
         }
 
         // === Convenience ===
