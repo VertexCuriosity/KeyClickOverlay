@@ -62,6 +62,23 @@ namespace KeyClickOverlay
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static partial bool GetWindowRect(nint hWnd, out RECT lpRect);
 
+        /// <summary>Returns the monitor nearest to a physical screen point.</summary>
+        [LibraryImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        private static partial nint MonitorFromPoint(POINT pt, uint dwFlags);
+
+        /// <summary>Returns the effective DPI for a monitor.</summary>
+        [LibraryImport("shcore.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        private static partial int GetDpiForMonitor(nint hmonitor, int dpiType, out uint dpiX, out uint dpiY);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int X;
+            public int Y;
+        }
+
         [StructLayout(LayoutKind.Sequential)]
         internal partial struct RECT
         {
@@ -227,6 +244,21 @@ namespace KeyClickOverlay
                 0,
                 x, y, 0, 0,
                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+        }
+
+        /// <summary>Returns the DPI scale for the monitor containing a physical screen point.</summary>
+        public static (double DpiScaleX, double DpiScaleY)? GetDpiScaleAtScreenPoint(int x, int y)
+        {
+            const uint MONITOR_DEFAULTTONEAREST = 2;
+            const int MDT_EFFECTIVE_DPI = 0;
+
+            nint monitor = MonitorFromPoint(new POINT { X = x, Y = y }, MONITOR_DEFAULTTONEAREST);
+            if (monitor == 0) return null;
+
+            int result = GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, out uint dpiX, out uint dpiY);
+            if (result != 0) return null;
+
+            return (dpiX / 96.0, dpiY / 96.0);
         }
 
         // === Show/Hide (used to suppress visible jitter during a live DPI/scale change) ===

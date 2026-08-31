@@ -329,28 +329,16 @@ namespace KeyClickOverlay
         {
             string transparentLabel = GetTransparentHotkeyLabel();
 
-            if (_transparentMenuItem != null)
-            {
-                _transparentMenuItem.ToolTip =
-                    $"Disables mouse interaction with KeyClickOverlay. Exit with {transparentLabel} or via the taskbar hover menu (hover its icon).";
-            }
+            _transparentMenuItem?.ToolTip =
+                $"Disables mouse interaction with KeyClickOverlay. Exit with {transparentLabel} or via the taskbar hover menu (hover its icon).";
 
-            if (_transparentThumbButton != null)
-            {
-                _transparentThumbButton.Tooltip = $"Transparent-mode ({transparentLabel})";
-            }
+            _transparentThumbButton?.Tooltip = $"Transparent-mode ({transparentLabel})";
 
-            if (_pauseThumbButton != null)
-            {
-                _pauseThumbButton.Tooltip = _overlayPaused
-                    ? $"Resume KeyClickOverlay ({GetPauseOverlayHotkeyLabel()})"
-                    : $"Pause KeyClickOverlay ({GetPauseOverlayHotkeyLabel()})";
-            }
+            _pauseThumbButton?.Tooltip = _overlayPaused
+                ? $"Resume KeyClickOverlay ({GetPauseOverlayHotkeyLabel()})"
+                : $"Pause KeyClickOverlay ({GetPauseOverlayHotkeyLabel()})";
 
-            if (_clearThumbButton != null)
-            {
-                _clearThumbButton.Tooltip = $"Clear keys ({GetClearOverlayHotkeyLabel()})";
-            }
+            _clearThumbButton?.Tooltip = $"Clear keys ({GetClearOverlayHotkeyLabel()})";
         }
 
         /// <summary>Update the taskbar Pause/Play button to match the current overlay state.</summary>
@@ -665,11 +653,30 @@ namespace KeyClickOverlay
             // Position
             var monitor = FindMonitor(p.MonitorDeviceName);
 
+            if (monitor == null &&
+                p.MonitorLeft.HasValue &&
+                p.MonitorTop.HasValue &&
+                p.MonitorWidth.HasValue &&
+                p.MonitorHeight.HasValue)
+            {
+                monitor = FindMonitorByWorkArea(
+                    p.MonitorLeft.Value,
+                    p.MonitorTop.Value,
+                    p.MonitorWidth.Value,
+                    p.MonitorHeight.Value);
+            }
+
             if (monitor != null && p.MonitorRelativeX.HasValue && p.MonitorRelativeY.HasValue)
             {
-                // Restore relative to the same monitor
+                // Restore relative to the saved monitor
                 var workArea = GetMonitorWorkArea(monitor);
-                var dpi = VisualTreeHelper.GetDpi(this);
+
+                // Use the target monitor's current DPI
+                var targetDpi = NativeMethods.GetDpiScaleAtScreenPoint(
+                    (int)Math.Round(workArea.Left + (workArea.Width / 2.0)),
+                    (int)Math.Round(workArea.Top + (workArea.Height / 2.0)));
+
+                var dpi = targetDpi ?? (VisualTreeHelper.GetDpi(this).DpiScaleX, VisualTreeHelper.GetDpi(this).DpiScaleY);
 
                 double windowWidthPx = Width * dpi.DpiScaleX;
                 double windowHeightPx = Height * dpi.DpiScaleY;
@@ -679,12 +686,7 @@ namespace KeyClickOverlay
                 double targetLeftPx = workArea.Left + (availableWidth * p.MonitorRelativeX.Value);
                 double targetTopPx = workArea.Top + (availableHeight * p.MonitorRelativeY.Value);
 
-                // Move via the native HWND API directly in physical pixels. Going through
-                // PointFromScreen + Left here was the source of the unreliable restores: it
-                // converts the target back into an offset from the window's *current* cached
-                // position/DPI, so any staleness in that cache (very common right after a
-                // resolution change) silently corrupted the result. SetWindowPos in physical
-                // pixels has no such ambiguity.
+                // Move directly in physical screen pixels when the HWND is available
                 var hwndForMove = new WindowInteropHelper(this).Handle;
                 if (hwndForMove != 0)
                 {
@@ -692,8 +694,7 @@ namespace KeyClickOverlay
                 }
                 else
                 {
-                    // HWND not created yet (very first apply, pre-SourceInitialized) — fall back
-                    // to DIP math; ClampWindowToVirtualScreen below will correct it once shown.
+                    // Fall back to DIP coordinates before the HWND exists
                     Left = targetLeftPx / dpi.DpiScaleX;
                     Top = targetTopPx / dpi.DpiScaleY;
                 }
@@ -705,7 +706,7 @@ namespace KeyClickOverlay
                 Top = p.WindowTop;
             }
 
-            ClampWindowToVirtualScreen(); // keep visible
+            EnsureWindowVisibleOnScreen(); // keep visible
 
             // Toggles / modes
             ApplyMouseEnabled(p.MouseEnabled);
@@ -738,7 +739,7 @@ namespace KeyClickOverlay
             UpdateStripBackgroundMetrics();
             UpdateChromeButtons();
 
-            // Preset switching should not force the app out of transparent mode when requested.
+            // Restore transparent mode when preset switching should preserve it
             if (preserveTransparentMode && wasTransparent)
                 SetTransparentMode(true, withPrompt: false);
         }
@@ -767,6 +768,22 @@ namespace KeyClickOverlay
                 workArea.Height);
         }
 
+        /// <summary>Finds a connected monitor matching a saved work area.</summary>
+        private static WinForms.Screen? FindMonitorByWorkArea(double left, double top, double width, double height)
+        {
+            const double tolerance = 8.0;
+
+            return WinForms.Screen.AllScreens.FirstOrDefault(screen =>
+            {
+                var workArea = screen.WorkingArea;
+
+                return Math.Abs(workArea.Left - left) <= tolerance &&
+                       Math.Abs(workArea.Top - top) <= tolerance &&
+                       Math.Abs(workArea.Width - width) <= tolerance &&
+                       Math.Abs(workArea.Height - height) <= tolerance;
+            });
+        }
+
         /// <summary>Returns the work area and DPI scale of the monitor containing KeyClickOverlay.</summary>
         private (string DeviceName, Rect WorkArea, double DpiScaleX, double DpiScaleY) GetCurrentMonitorInfo()
         {
@@ -779,7 +796,7 @@ namespace KeyClickOverlay
         }
 
         /// <summary>Ensures the window stays visible on a connected monitor (handles monitor/DPI/layout changes).</summary>
-        private void ClampWindowToVirtualScreen()
+        private void EnsureWindowVisibleOnScreen()
         {
             var hwnd = new WindowInteropHelper(this).Handle;
             if (hwnd == 0) return;
@@ -882,7 +899,7 @@ namespace KeyClickOverlay
                     Width = Math.Max(this.MinWidth, newWidthPx / newDpiScale.DpiScaleX);
                     Height = Math.Max(this.MinHeight, newHeightPx / newDpiScale.DpiScaleY);
 
-                    ClampWindowToVirtualScreen();
+                    EnsureWindowVisibleOnScreen();
                 }
                 finally
                 {
@@ -898,7 +915,7 @@ namespace KeyClickOverlay
         {
             Left += dx;
             Top += dy;
-            ClampWindowToVirtualScreen();
+            EnsureWindowVisibleOnScreen();
         }
 
         /// <summary>
@@ -1153,7 +1170,7 @@ namespace KeyClickOverlay
             Left = wa.Left;
             Top = wa.Bottom - Height;   // bottom-left anchor
 
-            ClampWindowToVirtualScreen();  // keep fully visible on current monitor setup
+            EnsureWindowVisibleOnScreen();  // keep fully visible on current monitor setup
 
             // Re-apply visuals
             SetMouseSvg(_currentMouseImage ?? "mouse_idle.svg");
@@ -1963,8 +1980,7 @@ namespace KeyClickOverlay
             void CloseContextMenu()
             {
                 savePresetMenu.IsSubmenuOpen = false;
-                if (cm != null) cm.IsOpen = false;
-            }
+                cm?.IsOpen = false;            }
 
             // Remove the default padding inside the submenu popup
             savePresetMenu.Resources[typeof(ContextMenu)] = new Style(typeof(ContextMenu))
@@ -4632,7 +4648,7 @@ namespace KeyClickOverlay
                 Width = Math.Max(MinWidth, width);
                 Height = Math.Max(MinHeight, height);
 
-                ClampWindowToVirtualScreen();
+                EnsureWindowVisibleOnScreen();
                 QueueFullRelayout();
             }
 
@@ -4796,7 +4812,7 @@ namespace KeyClickOverlay
                 Left = x;
                 Top = y - ReadCurrentHeight();
 
-                ClampWindowToVirtualScreen();
+                EnsureWindowVisibleOnScreen();
                 QueueFullRelayout();
             }
 
@@ -4910,7 +4926,7 @@ namespace KeyClickOverlay
         /// <summary>
         /// Creates the shared WPF-UI dialog layout with a title bar and content area.
         /// </summary>
-        private (Grid Root, WpfTitleBar TitleBar) CreateDialogRoot(FluentWindow dlg, UIElement content, Brush background, bool stretchContent = false)
+        private static (Grid Root, WpfTitleBar TitleBar) CreateDialogRoot(FluentWindow dlg, UIElement content, Brush background, bool stretchContent = false)
         {
             var titleBar = new WpfTitleBar
             {
@@ -4995,7 +5011,7 @@ namespace KeyClickOverlay
         /// <summary>
         /// Creates the shared icon-and-message content layout used by standard dialogs.
         /// </summary>
-        private Grid CreateDialogMessageContent(string message, DialogIcon icon, Brush background)
+        private static Grid CreateDialogMessageContent(string message, DialogIcon icon, Brush background)
         {
             var contentGrid = new Grid
             {
@@ -5577,10 +5593,10 @@ namespace KeyClickOverlay
                     try
                     {
                         var modeCombo = FindDescendant<ComboBox>(picker);
-                        if (modeCombo != null) modeCombo.MinWidth = 55;
+                        modeCombo?.MinWidth = 55;
 
                         var hexBox = FindDescendant<TextBox>(picker);
-                        if (hexBox != null) hexBox.MinWidth = 80;
+                        hexBox?.MinWidth = 80;
                     }
                     catch { /* template changes: ignore */ }
                 }
@@ -5797,8 +5813,7 @@ namespace KeyClickOverlay
 
             _previewFontKeysActive = true;
 
-            if (_stripBackground != null)
-                _stripBackground.Width = double.NaN;
+            _stripBackground?.Width = double.NaN;
 
             ApplyContentScaleToChildren();
             NormalizeInterItemSpacing();
@@ -6367,8 +6382,7 @@ namespace KeyClickOverlay
             // Preview row: let WPF size to content.
             if (_previewFontKeysActive)
             {
-                if (_stripBackground != null)
-                    _stripBackground.Width = double.NaN;
+                _stripBackground?.Width = double.NaN;
                 return;
             }
 
