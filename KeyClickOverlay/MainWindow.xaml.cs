@@ -817,29 +817,7 @@ namespace KeyClickOverlay
         }
 
         /// <summary>
-        /// Intercepts live DPI/scale changes (e.g. 150% -> 200% while the app is running).
-        /// Deliberately does NOT call base.OnDpiChanged: that base implementation performs WPF's
-        /// default "keep DIP size constant" auto-resize, which we only want for HEIGHT (so the
-        /// app's content/icon size stays a consistent real-world size across scale changes) — not
-        /// for WIDTH, where we want the same percentage of the screen preserved instead.
-        ///
-        /// Design notes:
-        /// - WPF has its own lower-level per-monitor resize pass that runs independently of this
-        ///   override and can keep firing SizeChanged/LocationChanged with transient, incorrect
-        ///   intermediate values for over a second before settling. _dpiSettleTimer debounces
-        ///   that noise (reset on every Size/LocationChanged — see the hooks near the timer's
-        ///   declaration) so the correction below only runs once things have gone quiet.
-        /// - The final correction is applied through WPF's own Left/Top/Width/Height properties,
-        ///   not raw native SetWindowPos — using native calls to move the HWND can desync from
-        ///   what WPF actually renders inside it.
-        /// - The monitor's work area is queried twice: once here (for relX/relY, describing where
-        ///   the window WAS — valid immediately, since it's a question about past state) and again,
-        ///   fresh, inside the debounced "settled" callback (for computing the target — the
-        ///   taskbar itself can take just as long as the rest of the transition to finish
-        ///   resizing, so a work-area reading taken at method entry isn't reliable for that).
-        /// - The window is hidden natively (ShowWindow, not WPF Opacity) for the duration of the
-        ///   transition, since Opacity changes can be delayed by the same pipeline backlog that
-        ///   causes the SizeChanged noise above, defeating the point of hiding it.
+        /// Handles live DPI changes while preserving the window's relative screen width and position.
         /// </summary>
         protected override void OnDpiChanged(DpiScale oldDpiScale, DpiScale newDpiScale)
         {
@@ -859,14 +837,11 @@ namespace KeyClickOverlay
             double availableWidthOld = Math.Max(1.0, oldWorkArea.Width - oldWidthPx);
             double availableHeightOld = Math.Max(1.0, oldWorkArea.Height - oldHeightPx);
 
-            // Position as a fraction of the work area, from the window's still-unmodified
-            // physical rect — nothing has touched it yet since we skipped base.
+            // Calculate relative position within the monitor work area
             double relX = (oldRect.Left - oldWorkArea.Left) / availableWidthOld;
             double relY = (oldRect.Top - oldWorkArea.Top) / availableHeightOld;
 
-            // Snap to an exact edge (0.0 or 1.0) when the window is already within a small
-            // physical-pixel tolerance of it, so a window sitting flush stays exactly flush
-            // instead of carrying forward a small leftover fractional offset.
+            // Snap positions near the monitor edges
             const int edgeSnapPx = 16;
             if (oldRect.Left - oldWorkArea.Left <= edgeSnapPx) relX = 0.0;
             else if ((oldWorkArea.Left + oldWorkArea.Width) - oldRect.Right <= edgeSnapPx) relX = 1.0;
@@ -877,39 +852,42 @@ namespace KeyClickOverlay
             relX = Math.Clamp(relX, 0.0, 1.0);
             relY = Math.Clamp(relY, 0.0, 1.0);
 
-            // WIDTH: keep the same physical pixel footprint (same % of screen).
+            // WIDTH: preserve the same physical pixel footprint (same percentage of the screen).
             int newWidthPx = oldWidthPx;
 
-            // HEIGHT: follow ordinary DPI-aware scaling — the DIP height stays exactly what it
-            // already is, and only the physical pixel size changes with the new scale, so the
-            // app's content/icon size stays a consistent real-world size across scale changes.
+            // HEIGHT: keep the same DIP height so the physical height follows the new DPI scale
+            // and the app content remains visually consistent.
             int newHeightPx = (int)Math.Round(Height * newDpiScale.DpiScaleY);
 
-            // Hide the whole HWND for the duration of the transition so WPF's internal resize
-            // noise isn't visible on screen.
+            // Hide the HWND during the transition so WPF's intermediate resize steps aren't visible.
             NativeMethods.ShowWindow(hwnd, NativeMethods.SW_HIDE);
 
-            // Wait for WPF's Size/LocationChanged noise to genuinely go quiet before querying the
-            // work area fresh and applying the final correction.
+            // Wait until WPF's SizeChanged/LocationChanged activity has settled, then apply
+            // the final size and position using the updated monitor work area.
             _pendingDpiCorrection = () =>
             {
-                var settledScreen = WinForms.Screen.FromHandle(hwnd);
-                var settledWorkArea = GetMonitorWorkArea(settledScreen);
+                try
+                {
+                    var settledScreen = WinForms.Screen.FromHandle(hwnd);
+                    var settledWorkArea = GetMonitorWorkArea(settledScreen);
 
-                double availableWidthNew = Math.Max(1.0, settledWorkArea.Width - newWidthPx);
-                double availableHeightNew = Math.Max(1.0, settledWorkArea.Height - newHeightPx);
+                    double availableWidthNew = Math.Max(1.0, settledWorkArea.Width - newWidthPx);
+                    double availableHeightNew = Math.Max(1.0, settledWorkArea.Height - newHeightPx);
 
-                double targetLeftPx = settledWorkArea.Left + (availableWidthNew * relX);
-                double targetTopPx = settledWorkArea.Top + (availableHeightNew * relY);
+                    double targetLeftPx = settledWorkArea.Left + (availableWidthNew * relX);
+                    double targetTopPx = settledWorkArea.Top + (availableHeightNew * relY);
 
-                Left = targetLeftPx / newDpiScale.DpiScaleX;
-                Top = targetTopPx / newDpiScale.DpiScaleY;
-                Width = Math.Max(this.MinWidth, newWidthPx / newDpiScale.DpiScaleX);
-                Height = Math.Max(this.MinHeight, newHeightPx / newDpiScale.DpiScaleY);
+                    Left = targetLeftPx / newDpiScale.DpiScaleX;
+                    Top = targetTopPx / newDpiScale.DpiScaleY;
+                    Width = Math.Max(this.MinWidth, newWidthPx / newDpiScale.DpiScaleX);
+                    Height = Math.Max(this.MinHeight, newHeightPx / newDpiScale.DpiScaleY);
 
-                ClampWindowToVirtualScreen();
-
-                NativeMethods.ShowWindow(hwnd, NativeMethods.SW_SHOWNOACTIVATE);
+                    ClampWindowToVirtualScreen();
+                }
+                finally
+                {
+                    NativeMethods.ShowWindow(hwnd, NativeMethods.SW_SHOWNOACTIVATE);
+                }
             };
             _dpiSettleTimer.Stop();
             _dpiSettleTimer.Start();
