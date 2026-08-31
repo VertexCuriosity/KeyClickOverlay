@@ -712,7 +712,6 @@ namespace KeyClickOverlay
                 bool wasTransparent = _transparentToMouse;
 
                 // Size
-                Width = Math.Max(this.MinWidth, p.WindowWidth);
                 Height = Math.Max(this.MinHeight, p.WindowHeight);
 
                 // Position
@@ -743,6 +742,12 @@ namespace KeyClickOverlay
 
                     var dpi = targetDpi ?? (VisualTreeHelper.GetDpi(this).DpiScaleX, VisualTreeHelper.GetDpi(this).DpiScaleY);
 
+                    // Preserve the physical width when restoring across a different display scale
+                    double savedDpiScaleX = p.DpiScaleX.GetValueOrDefault(dpi.DpiScaleX);
+                    double savedWidthPx = p.WindowWidth * savedDpiScaleX;
+
+                    Width = Math.Max(this.MinWidth, savedWidthPx / dpi.DpiScaleX);
+
                     double windowWidthPx = Width * dpi.DpiScaleX;
                     double windowHeightPx = Height * dpi.DpiScaleY;
                     double availableWidth = Math.Max(1.0, workArea.Width - windowWidthPx);
@@ -766,7 +771,8 @@ namespace KeyClickOverlay
                 }
                 else if (p.WindowLeft != 0 || p.WindowTop != 0)
                 {
-                    // Fall back to absolute position for older presets
+                    // Fall back to absolute geometry for older presets
+                    Width = Math.Max(this.MinWidth, p.WindowWidth);
                     Left = p.WindowLeft;
                     Top = p.WindowTop;
                 }
@@ -937,9 +943,12 @@ namespace KeyClickOverlay
             double availableHeightOld = Math.Max(1.0, oldWorkArea.Height - oldHeightPx);
 
             // Preserve taskbar overlap separately from normal work-area positioning
-            double taskbarOverlapDip = Math.Max(
-                0.0,
-                (oldRect.Bottom - oldWorkArea.Bottom) / oldDpiScale.DpiScaleY);
+            double oldTaskbarHeight = Math.Max(0.0, screen.Bounds.Bottom - oldWorkArea.Bottom);
+            double taskbarOverlapPx = Math.Max(0.0, oldRect.Bottom - oldWorkArea.Bottom);
+
+            double taskbarOverlapRatio = oldTaskbarHeight > 0.0
+                ? taskbarOverlapPx / oldTaskbarHeight
+                : 0.0;
 
             // Calculate relative position within the monitor work area
             double relX = (oldRect.Left - oldWorkArea.Left) / availableWidthOld;
@@ -955,7 +964,7 @@ namespace KeyClickOverlay
 
             if (oldRect.Top - oldWorkArea.Top <= edgeSnapPx)
                 relY = 0.0;
-            else if (taskbarOverlapDip <= 0.0 &&
+            else if (taskbarOverlapRatio <= 0.0 &&
                      oldWorkArea.Bottom - oldRect.Bottom <= edgeSnapPx)
                 relY = 1.0;
 
@@ -991,14 +1000,16 @@ namespace KeyClickOverlay
                     double targetTopPx = settledWorkArea.Top + (availableHeightNew * relY);
 
                     // Preserve the same logical overlap with the taskbar
-                    if (taskbarOverlapDip > 0.0)
+                    if (taskbarOverlapRatio > 0.0)
                     {
-                        double overlapPx = taskbarOverlapDip * newDpiScale.DpiScaleY;
+                        double settledTaskbarHeight = Math.Max(0.0, settledScreen.Bounds.Bottom - settledWorkArea.Bottom);
+
+                        double overlapPx = settledTaskbarHeight * taskbarOverlapRatio;
                         targetTopPx = settledWorkArea.Bottom + overlapPx - newHeightPx;
                     }
 
                     System.Diagnostics.Debug.WriteLine(
-                        $"  rel=({relX:0.###},{relY:0.###}) overlapDip={taskbarOverlapDip:0.###} " +
+                        $"  rel=({relX:0.###},{relY:0.###}) overlapRatio={taskbarOverlapRatio:0.###} " +
                         $"settledWorkArea={settledWorkArea} newSizePx=({newWidthPx},{newHeightPx}) " +
                         $"target=({targetLeftPx:0},{targetTopPx:0})");
 
