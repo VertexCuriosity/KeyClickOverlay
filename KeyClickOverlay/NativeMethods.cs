@@ -229,7 +229,18 @@ namespace KeyClickOverlay
                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
         }
 
+        // === Show/Hide (used to suppress visible jitter during a live DPI/scale change) ===
+
+        internal const int SW_HIDE = 0;
+        internal const int SW_SHOWNOACTIVATE = 4;
+
+        [LibraryImport("user32.dll", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool ShowWindow(nint hWnd, int nCmdShow);
+
         // === Convenience ===
+
 
         /// <summary>Triggers native resize via SC_SIZE (direction is HT edge/corner offset 0..8).</summary>
         public static void NativeResizeWindow(nint handle, int direction)

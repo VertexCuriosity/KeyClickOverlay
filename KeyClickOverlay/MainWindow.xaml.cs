@@ -84,6 +84,15 @@ namespace KeyClickOverlay
         private Window? _topmostTarget = null;                                      // null = main window; otherwise, a dialog to keep above
         private bool _suspendTopmostForMenu = false;                                // true while the context menu (or a submenu) is open
         private readonly DispatcherTimer _topmostPulse = new();                     // heartbeat that re-asserts TopMost
+
+        // Debounce for live DPI/scale changes: WPF's own internal per-monitor resize pass keeps
+        // firing SizeChanged/LocationChanged for a while after a scale change (observed up to
+        // ~1.5s) before it actually settles. Rather than guess a fixed delay, this timer gets
+        // reset every time one of those events fires while a DPI correction is pending, and only
+        // runs the correction once things have gone quiet for a short stretch.
+        private readonly DispatcherTimer _dpiSettleTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
+        private Action? _pendingDpiCorrection;
+
         private Color _backgroundColorRgb = Color.FromRgb(63, 63, 63);              // background base color #3F3F3F (no alpha)
         private double _backgroundOpacity = 112.0 / 255.0;                          // default background opacity (~44%)
         private Color _mouseColorRgb = Color.FromRgb(0xE5, 0xE5, 0xE5);              // default mouse color (#e5e5e5)
@@ -561,19 +570,8 @@ namespace KeyClickOverlay
                 ? new Rect(Left, Top, width, height)
                 : RestoreBounds;
 
-            Point windowTopLeftPx = PointToScreen(new Point(0, 0));
-            var dpi = VisualTreeHelper.GetDpi(this);
-
-            double windowWidthPx = normal.Width * dpi.DpiScaleX;
-            double windowHeightPx = normal.Height * dpi.DpiScaleY;
-
+            var placement = ComputeCurrentRelativePlacement(normal);
             var monitor = GetCurrentMonitorInfo();
-
-            double availableWidth = Math.Max(1.0, monitor.WorkArea.Width - windowWidthPx);
-            double availableHeight = Math.Max(1.0, monitor.WorkArea.Height - windowHeightPx);
-
-            double relativeX = (windowTopLeftPx.X - monitor.WorkArea.Left) / availableWidth;
-            double relativeY = (windowTopLeftPx.Y - monitor.WorkArea.Top) / availableHeight;
 
             return new PresetData
             {
@@ -585,9 +583,9 @@ namespace KeyClickOverlay
                 WindowTop = normal.Top,
 
                 // Monitor-aware placement
-                MonitorDeviceName = monitor.DeviceName,
-                MonitorRelativeX = relativeX,
-                MonitorRelativeY = relativeY,
+                MonitorDeviceName = placement.DeviceName,
+                MonitorRelativeX = placement.RelativeX,
+                MonitorRelativeY = placement.RelativeY,
                 MonitorLeft = monitor.WorkArea.Left,
                 MonitorTop = monitor.WorkArea.Top,
                 MonitorWidth = monitor.WorkArea.Width,
@@ -609,6 +607,44 @@ namespace KeyClickOverlay
                 PillPadFactor = _pillPadFactor,
                 PillCornerFactor = _pillCornerFactor
             };
+        }
+
+        /// <summary>
+        /// Computes this window's position as a fraction (0..1) of its current monitor's work
+        /// area, in exact physical pixels. Shared by preset saving and by the live DPI-change
+        /// tracker below, so both use identical math.
+        /// </summary>
+        private (string? DeviceName, double RelativeX, double RelativeY) ComputeCurrentRelativePlacement(Rect normalDip)
+        {
+            var monitor = GetCurrentMonitorInfo();
+
+            double windowLeftPx, windowTopPx, windowWidthPx, windowHeightPx;
+            var hwnd = new WindowInteropHelper(this).Handle;
+
+            if (hwnd != 0 && WindowState == WindowState.Normal && NativeMethods.GetWindowRect(hwnd, out var rect))
+            {
+                windowLeftPx = rect.Left;
+                windowTopPx = rect.Top;
+                windowWidthPx = rect.Right - rect.Left;
+                windowHeightPx = rect.Bottom - rect.Top;
+            }
+            else
+            {
+                // Fallback for the rare case the HWND isn't available yet (e.g. minimized/maximized).
+                var dpi = VisualTreeHelper.GetDpi(this);
+                windowLeftPx = normalDip.Left * dpi.DpiScaleX;
+                windowTopPx = normalDip.Top * dpi.DpiScaleY;
+                windowWidthPx = normalDip.Width * dpi.DpiScaleX;
+                windowHeightPx = normalDip.Height * dpi.DpiScaleY;
+            }
+
+            double availableWidth = Math.Max(1.0, monitor.WorkArea.Width - windowWidthPx);
+            double availableHeight = Math.Max(1.0, monitor.WorkArea.Height - windowHeightPx);
+
+            double relativeX = (windowLeftPx - monitor.WorkArea.Left) / availableWidth;
+            double relativeY = (windowTopPx - monitor.WorkArea.Top) / availableHeight;
+
+            return (monitor.DeviceName, relativeX, relativeY);
         }
 
         /// <summary>Convert “#RRGGBB” to Color; returns Black on invalid.</summary>
@@ -650,10 +686,24 @@ namespace KeyClickOverlay
                 double targetLeftPx = workArea.Left + (availableWidth * p.MonitorRelativeX.Value);
                 double targetTopPx = workArea.Top + (availableHeight * p.MonitorRelativeY.Value);
 
-                Point targetLocal = PointFromScreen(new Point(targetLeftPx, targetTopPx));
-
-                Left += targetLocal.X;
-                Top += targetLocal.Y;
+                // Move via the native HWND API directly in physical pixels. Going through
+                // PointFromScreen + Left here was the source of the unreliable restores: it
+                // converts the target back into an offset from the window's *current* cached
+                // position/DPI, so any staleness in that cache (very common right after a
+                // resolution change) silently corrupted the result. SetWindowPos in physical
+                // pixels has no such ambiguity.
+                var hwndForMove = new WindowInteropHelper(this).Handle;
+                if (hwndForMove != 0)
+                {
+                    NativeMethods.MoveWindowToScreenPoint(this, (int)Math.Round(targetLeftPx), (int)Math.Round(targetTopPx));
+                }
+                else
+                {
+                    // HWND not created yet (very first apply, pre-SourceInitialized) — fall back
+                    // to DIP math; ClampWindowToVirtualScreen below will correct it once shown.
+                    Left = targetLeftPx / dpi.DpiScaleX;
+                    Top = targetTopPx / dpi.DpiScaleY;
+                }
             }
             else if (p.WindowLeft != 0 || p.WindowTop != 0)
             {
@@ -771,6 +821,105 @@ namespace KeyClickOverlay
             int targetTop = Math.Clamp(rect.Top, nearestWorkArea.Top, maxTop);
 
             NativeMethods.MoveWindowToScreenPoint(this, targetLeft, targetTop);
+        }
+
+        /// <summary>
+        /// Intercepts live DPI/scale changes (e.g. 150% -> 200% while the app is running).
+        /// Deliberately does NOT call base.OnDpiChanged: that base implementation performs WPF's
+        /// default "keep DIP size constant" auto-resize, which we only want for HEIGHT (so the
+        /// app's content/icon size stays a consistent real-world size across scale changes) — not
+        /// for WIDTH, where we want the same percentage of the screen preserved instead.
+        ///
+        /// Design notes:
+        /// - WPF has its own lower-level per-monitor resize pass that runs independently of this
+        ///   override and can keep firing SizeChanged/LocationChanged with transient, incorrect
+        ///   intermediate values for over a second before settling. _dpiSettleTimer debounces
+        ///   that noise (reset on every Size/LocationChanged — see the hooks near the timer's
+        ///   declaration) so the correction below only runs once things have gone quiet.
+        /// - The final correction is applied through WPF's own Left/Top/Width/Height properties,
+        ///   not raw native SetWindowPos — using native calls to move the HWND can desync from
+        ///   what WPF actually renders inside it.
+        /// - The monitor's work area is queried twice: once here (for relX/relY, describing where
+        ///   the window WAS — valid immediately, since it's a question about past state) and again,
+        ///   fresh, inside the debounced "settled" callback (for computing the target — the
+        ///   taskbar itself can take just as long as the rest of the transition to finish
+        ///   resizing, so a work-area reading taken at method entry isn't reliable for that).
+        /// - The window is hidden natively (ShowWindow, not WPF Opacity) for the duration of the
+        ///   transition, since Opacity changes can be delayed by the same pipeline backlog that
+        ///   causes the SizeChanged noise above, defeating the point of hiding it.
+        /// </summary>
+        protected override void OnDpiChanged(DpiScale oldDpiScale, DpiScale newDpiScale)
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == 0 || WindowState != WindowState.Normal || !NativeMethods.GetWindowRect(hwnd, out var oldRect))
+            {
+                base.OnDpiChanged(oldDpiScale, newDpiScale);
+                return;
+            }
+
+            var screen = WinForms.Screen.FromHandle(hwnd);
+            var oldWorkArea = GetMonitorWorkArea(screen);
+
+            int oldWidthPx = oldRect.Right - oldRect.Left;
+            int oldHeightPx = oldRect.Bottom - oldRect.Top;
+
+            double availableWidthOld = Math.Max(1.0, oldWorkArea.Width - oldWidthPx);
+            double availableHeightOld = Math.Max(1.0, oldWorkArea.Height - oldHeightPx);
+
+            // Position as a fraction of the work area, from the window's still-unmodified
+            // physical rect — nothing has touched it yet since we skipped base.
+            double relX = (oldRect.Left - oldWorkArea.Left) / availableWidthOld;
+            double relY = (oldRect.Top - oldWorkArea.Top) / availableHeightOld;
+
+            // Snap to an exact edge (0.0 or 1.0) when the window is already within a small
+            // physical-pixel tolerance of it, so a window sitting flush stays exactly flush
+            // instead of carrying forward a small leftover fractional offset.
+            const int edgeSnapPx = 16;
+            if (oldRect.Left - oldWorkArea.Left <= edgeSnapPx) relX = 0.0;
+            else if ((oldWorkArea.Left + oldWorkArea.Width) - oldRect.Right <= edgeSnapPx) relX = 1.0;
+
+            if (oldRect.Top - oldWorkArea.Top <= edgeSnapPx) relY = 0.0;
+            else if ((oldWorkArea.Top + oldWorkArea.Height) - oldRect.Bottom <= edgeSnapPx) relY = 1.0;
+
+            relX = Math.Clamp(relX, 0.0, 1.0);
+            relY = Math.Clamp(relY, 0.0, 1.0);
+
+            // WIDTH: keep the same physical pixel footprint (same % of screen).
+            int newWidthPx = oldWidthPx;
+
+            // HEIGHT: follow ordinary DPI-aware scaling — the DIP height stays exactly what it
+            // already is, and only the physical pixel size changes with the new scale, so the
+            // app's content/icon size stays a consistent real-world size across scale changes.
+            int newHeightPx = (int)Math.Round(Height * newDpiScale.DpiScaleY);
+
+            // Hide the whole HWND for the duration of the transition so WPF's internal resize
+            // noise isn't visible on screen.
+            NativeMethods.ShowWindow(hwnd, NativeMethods.SW_HIDE);
+
+            // Wait for WPF's Size/LocationChanged noise to genuinely go quiet before querying the
+            // work area fresh and applying the final correction.
+            _pendingDpiCorrection = () =>
+            {
+                var settledScreen = WinForms.Screen.FromHandle(hwnd);
+                var settledWorkArea = GetMonitorWorkArea(settledScreen);
+
+                double availableWidthNew = Math.Max(1.0, settledWorkArea.Width - newWidthPx);
+                double availableHeightNew = Math.Max(1.0, settledWorkArea.Height - newHeightPx);
+
+                double targetLeftPx = settledWorkArea.Left + (availableWidthNew * relX);
+                double targetTopPx = settledWorkArea.Top + (availableHeightNew * relY);
+
+                Left = targetLeftPx / newDpiScale.DpiScaleX;
+                Top = targetTopPx / newDpiScale.DpiScaleY;
+                Width = Math.Max(this.MinWidth, newWidthPx / newDpiScale.DpiScaleX);
+                Height = Math.Max(this.MinHeight, newHeightPx / newDpiScale.DpiScaleY);
+
+                ClampWindowToVirtualScreen();
+
+                NativeMethods.ShowWindow(hwnd, NativeMethods.SW_SHOWNOACTIVATE);
+            };
+            _dpiSettleTimer.Stop();
+            _dpiSettleTimer.Start();
         }
 
         /// <summary>Move the window by a small delta in DIPs, then clamp to visible bounds.</summary>
@@ -1340,10 +1489,25 @@ namespace KeyClickOverlay
             StateChanged += (_, __) => this.ReassertTopmost();
             IsVisibleChanged += (_, __) => this.ReassertTopmost();
 
+            // Debounce reset: while a DPI correction is waiting to fire, any further Size/Location
+            // noise (WPF's own internal resize pass) pushes the "settled" point back out.
+            SizeChanged += (_, __) => { if (_pendingDpiCorrection != null) { _dpiSettleTimer.Stop(); _dpiSettleTimer.Start(); } };
+            LocationChanged += (_, __) => { if (_pendingDpiCorrection != null) { _dpiSettleTimer.Stop(); _dpiSettleTimer.Start(); } };
+
             // Light heartbeat to cover rare z-order steals (every 2 seconds)
             _topmostPulse.Interval = TimeSpan.FromSeconds(2);
             _topmostPulse.Tick += (_, __) => this.ReassertTopmost();
             _topmostPulse.Start();
+
+            // Fires once no further Size/LocationChanged has happened for _dpiSettleTimer's
+            // interval after a live DPI change — see OnDpiChanged and the debounce-reset below.
+            _dpiSettleTimer.Tick += (_, __) =>
+            {
+                _dpiSettleTimer.Stop();
+                var correction = _pendingDpiCorrection;
+                _pendingDpiCorrection = null;
+                correction?.Invoke();
+            };
             this.ReassertTopmost(); // Assert TopMost once right away (covers any style changes during startup)
 
             // ---------- Stage initial mouse SVG + pill width after first layout ----------
