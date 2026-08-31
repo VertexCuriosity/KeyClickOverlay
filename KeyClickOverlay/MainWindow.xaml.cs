@@ -810,10 +810,10 @@ namespace KeyClickOverlay
             // Keep the current position if enough of the window is visible on any connected monitor
             foreach (var screen in WinForms.Screen.AllScreens)
             {
-                var workArea = screen.WorkingArea;
+                var bounds = screen.Bounds;
 
-                int visibleWidth = Math.Min(rect.Right, workArea.Right) - Math.Max(rect.Left, workArea.Left);
-                int visibleHeight = Math.Min(rect.Bottom, workArea.Bottom) - Math.Max(rect.Top, workArea.Top);
+                int visibleWidth = Math.Min(rect.Right, bounds.Right) - Math.Max(rect.Left, bounds.Left);
+                int visibleHeight = Math.Min(rect.Bottom, bounds.Bottom) - Math.Max(rect.Top, bounds.Top);
 
                 if (visibleWidth >= minVisible && visibleHeight >= minVisible)
                     return;
@@ -822,13 +822,13 @@ namespace KeyClickOverlay
             // Move an off-screen window onto the nearest connected monitor
             var windowRect = new System.Drawing.Rectangle(rect.Left, rect.Top, windowWidth, windowHeight);
             var nearestScreen = WinForms.Screen.FromRectangle(windowRect);
-            var nearestWorkArea = nearestScreen.WorkingArea;
+            var nearestBounds = nearestScreen.Bounds;
 
-            int maxLeft = Math.Max(nearestWorkArea.Left, nearestWorkArea.Right - windowWidth);
-            int maxTop = Math.Max(nearestWorkArea.Top, nearestWorkArea.Bottom - windowHeight);
+            int maxLeft = Math.Max(nearestBounds.Left, nearestBounds.Right - windowWidth);
+            int maxTop = Math.Max(nearestBounds.Top, nearestBounds.Bottom - windowHeight);
 
-            int targetLeft = Math.Clamp(rect.Left, nearestWorkArea.Left, maxLeft);
-            int targetTop = Math.Clamp(rect.Top, nearestWorkArea.Top, maxTop);
+            int targetLeft = Math.Clamp(rect.Left, nearestBounds.Left, maxLeft);
+            int targetTop = Math.Clamp(rect.Top, nearestBounds.Top, maxTop);
 
             NativeMethods.MoveWindowToScreenPoint(this, targetLeft, targetTop);
         }
@@ -846,25 +846,25 @@ namespace KeyClickOverlay
             }
 
             var screen = WinForms.Screen.FromHandle(hwnd);
-            var oldWorkArea = GetMonitorWorkArea(screen);
+            var oldBounds = screen.Bounds;
 
             int oldWidthPx = oldRect.Right - oldRect.Left;
             int oldHeightPx = oldRect.Bottom - oldRect.Top;
 
-            double availableWidthOld = Math.Max(1.0, oldWorkArea.Width - oldWidthPx);
-            double availableHeightOld = Math.Max(1.0, oldWorkArea.Height - oldHeightPx);
+            double availableWidthOld = Math.Max(1.0, oldBounds.Width - oldWidthPx);
+            double availableHeightOld = Math.Max(1.0, oldBounds.Height - oldHeightPx);
 
-            // Calculate relative position within the monitor work area
-            double relX = (oldRect.Left - oldWorkArea.Left) / availableWidthOld;
-            double relY = (oldRect.Top - oldWorkArea.Top) / availableHeightOld;
+            // Calculate relative position within the full monitor bounds
+            double relX = (oldRect.Left - oldBounds.Left) / availableWidthOld;
+            double relY = (oldRect.Top - oldBounds.Top) / availableHeightOld;
 
             // Snap positions near the monitor edges
             const int edgeSnapPx = 16;
-            if (oldRect.Left - oldWorkArea.Left <= edgeSnapPx) relX = 0.0;
-            else if ((oldWorkArea.Left + oldWorkArea.Width) - oldRect.Right <= edgeSnapPx) relX = 1.0;
+            if (oldRect.Left - oldBounds.Left <= edgeSnapPx) relX = 0.0;
+            else if (oldBounds.Right - oldRect.Right <= edgeSnapPx) relX = 1.0;
 
-            if (oldRect.Top - oldWorkArea.Top <= edgeSnapPx) relY = 0.0;
-            else if ((oldWorkArea.Top + oldWorkArea.Height) - oldRect.Bottom <= edgeSnapPx) relY = 1.0;
+            if (oldRect.Top - oldBounds.Top <= edgeSnapPx) relY = 0.0;
+            else if (oldBounds.Bottom - oldRect.Bottom <= edgeSnapPx) relY = 1.0;
 
             relX = Math.Clamp(relX, 0.0, 1.0);
             relY = Math.Clamp(relY, 0.0, 1.0);
@@ -886,13 +886,13 @@ namespace KeyClickOverlay
                 try
                 {
                     var settledScreen = WinForms.Screen.FromHandle(hwnd);
-                    var settledWorkArea = GetMonitorWorkArea(settledScreen);
+                    var settledBounds = settledScreen.Bounds;
 
-                    double availableWidthNew = Math.Max(1.0, settledWorkArea.Width - newWidthPx);
-                    double availableHeightNew = Math.Max(1.0, settledWorkArea.Height - newHeightPx);
+                    double availableWidthNew = Math.Max(1.0, settledBounds.Width - newWidthPx);
+                    double availableHeightNew = Math.Max(1.0, settledBounds.Height - newHeightPx);
 
-                    double targetLeftPx = settledWorkArea.Left + (availableWidthNew * relX);
-                    double targetTopPx = settledWorkArea.Top + (availableHeightNew * relY);
+                    double targetLeftPx = settledBounds.Left + (availableWidthNew * relX);
+                    double targetTopPx = settledBounds.Top + (availableHeightNew * relY);
 
                     Left = targetLeftPx / newDpiScale.DpiScaleX;
                     Top = targetTopPx / newDpiScale.DpiScaleY;
