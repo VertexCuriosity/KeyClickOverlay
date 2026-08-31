@@ -604,6 +604,49 @@ namespace KeyClickOverlay
             };
         }
 
+        /// <summary>Updates only the window geometry of the active preset.</summary>
+        private void UpdateActivePresetGeometry()
+        {
+            try
+            {
+                string? path = _prefs.LastPresetPath;
+                if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                    return;
+
+                string json = File.ReadAllText(path);
+                var preset = JsonSerializer.Deserialize<PresetData>(json, PrefsJsonOptions);
+                if (preset is null)
+                    return;
+
+                var geometry = BuildPresetFromCurrent();
+
+                preset.WindowWidth = geometry.WindowWidth;
+                preset.WindowHeight = geometry.WindowHeight;
+                preset.WindowLeft = geometry.WindowLeft;
+                preset.WindowTop = geometry.WindowTop;
+
+                preset.MonitorDeviceName = geometry.MonitorDeviceName;
+                preset.MonitorRelativeX = geometry.MonitorRelativeX;
+                preset.MonitorRelativeY = geometry.MonitorRelativeY;
+
+                preset.MonitorLeft = geometry.MonitorLeft;
+                preset.MonitorTop = geometry.MonitorTop;
+                preset.MonitorWidth = geometry.MonitorWidth;
+                preset.MonitorHeight = geometry.MonitorHeight;
+
+                preset.DpiScaleX = geometry.DpiScaleX;
+                preset.DpiScaleY = geometry.DpiScaleY;
+
+                json = JsonSerializer.Serialize(preset, PrefsJsonOptions);
+                File.WriteAllText(path, json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"Failed to update active preset geometry: {ex.Message}");
+            }
+        }
+
         /// <summary>
         /// Computes this window's position as a fraction (0..1) of its current monitor's work
         /// area, in exact physical pixels. Shared by preset saving and by the live DPI-change
@@ -969,6 +1012,8 @@ namespace KeyClickOverlay
                     NativeMethods.GetWindowRect(hwnd, out var finalRect);
                     System.Diagnostics.Debug.WriteLine(
                         $"  final rect=({finalRect.Left},{finalRect.Top},{finalRect.Right},{finalRect.Bottom})");
+
+                    UpdateActivePresetGeometry();
                 }
                 finally
                 {
