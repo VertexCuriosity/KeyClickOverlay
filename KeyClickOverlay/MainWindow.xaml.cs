@@ -84,15 +84,8 @@ namespace KeyClickOverlay
         private Window? _topmostTarget = null;                                      // null = main window; otherwise, a dialog to keep above
         private bool _suspendTopmostForMenu = false;                                // true while the context menu (or a submenu) is open
         private readonly DispatcherTimer _topmostPulse = new();                     // heartbeat that re-asserts TopMost
-
-        // Debounce for live DPI/scale changes: WPF's own internal per-monitor resize pass keeps
-        // firing SizeChanged/LocationChanged for a while after a scale change (observed up to
-        // ~1.5s) before it actually settles. Rather than guess a fixed delay, this timer gets
-        // reset every time one of those events fires while a DPI correction is pending, and only
-        // runs the correction once things have gone quiet for a short stretch.
-        private readonly DispatcherTimer _dpiSettleTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
-        private Action? _pendingDpiCorrection;
-
+        private readonly DispatcherTimer _dpiSettleTimer = new() { Interval = TimeSpan.FromMilliseconds(150) }; // wait until DPI-related window changes settle
+        private Action? _pendingDpiCorrection;                                      // final size/position correction after a DPI change
         private Color _backgroundColorRgb = Color.FromRgb(63, 63, 63);              // background base color #3F3F3F (no alpha)
         private double _backgroundOpacity = 112.0 / 255.0;                          // default background opacity (~44%)
         private Color _mouseColorRgb = Color.FromRgb(0xE5, 0xE5, 0xE5);              // default mouse color (#e5e5e5)
@@ -493,13 +486,13 @@ namespace KeyClickOverlay
 
             // --- Monitor-aware placement ---
             public string? MonitorDeviceName { get; set; }  // Windows device name of the monitor
-            public double? MonitorRelativeX { get; set; }  // Relative horizontal position within the monitor work area (0.0–1.0)
-            public double? MonitorRelativeY { get; set; }  // Relative vertical position within the monitor work area (0.0–1.0)
+            public double? MonitorRelativeX { get; set; }   // Relative horizontal position within the monitor work area (0.0–1.0)
+            public double? MonitorRelativeY { get; set; }   // Relative vertical position within the monitor work area (0.0–1.0)
 
-            public double? MonitorLeft { get; set; }    // Monitor work-area left edge (DIPs)
-            public double? MonitorTop { get; set; }     // Monitor work-area top edge (DIPs)
-            public double? MonitorWidth { get; set; }   // Monitor work-area width (DIPs)
-            public double? MonitorHeight { get; set; }  // Monitor work-area height (DIPs)
+            public double? MonitorLeft { get; set; }    // Monitor work-area left edge (physical pixels)
+            public double? MonitorTop { get; set; }     // Monitor work-area top edge (physical pixels)
+            public double? MonitorWidth { get; set; }   // Monitor work-area width (physical pixels)
+            public double? MonitorHeight { get; set; }  // Monitor work-area height (physical pixels)
 
             public double? DpiScaleX { get; set; }  // Horizontal DPI scale when the preset was saved
             public double? DpiScaleY { get; set; }  // Vertical DPI scale when the preset was saved
@@ -1489,8 +1482,7 @@ namespace KeyClickOverlay
             StateChanged += (_, __) => this.ReassertTopmost();
             IsVisibleChanged += (_, __) => this.ReassertTopmost();
 
-            // Debounce reset: while a DPI correction is waiting to fire, any further Size/Location
-            // noise (WPF's own internal resize pass) pushes the "settled" point back out.
+            // Restart the DPI settle timer while WPF is still changing the window
             SizeChanged += (_, __) => { if (_pendingDpiCorrection != null) { _dpiSettleTimer.Stop(); _dpiSettleTimer.Start(); } };
             LocationChanged += (_, __) => { if (_pendingDpiCorrection != null) { _dpiSettleTimer.Stop(); _dpiSettleTimer.Start(); } };
 
@@ -1499,8 +1491,7 @@ namespace KeyClickOverlay
             _topmostPulse.Tick += (_, __) => this.ReassertTopmost();
             _topmostPulse.Start();
 
-            // Fires once no further Size/LocationChanged has happened for _dpiSettleTimer's
-            // interval after a live DPI change — see OnDpiChanged and the debounce-reset below.
+            // Apply the pending DPI correction once window changes have settled
             _dpiSettleTimer.Tick += (_, __) =>
             {
                 _dpiSettleTimer.Stop();
