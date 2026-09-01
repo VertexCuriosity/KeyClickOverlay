@@ -6,12 +6,22 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 <br>
 
-## [1.1.1] - 2026-08-28
+## [1.1.1] - 2026-09-01
 
 ### Changed
 
-- window recorgition
-- all earlier presets save need to be overwritten
+- Improved window positioning and sizing across different display scaling settings.
+- Improved window position restoration when switching between monitors with different DPI scaling.
+- Improved window positioning when overlapping the Windows taskbar.
+- Improved preset window geometry handling across different monitors and DPI settings.
+- Presets created with earlier versions should be saved again to store the updated monitor and DPI information.
+
+### Fixed
+
+- Fixed window position and size drifting when changing display scaling.
+- Fixed incorrect window positioning after switching between different DPI scaling levels.
+- Fixed taskbar overlap not being preserved correctly after DPI changes.
+- Fixed window geometry entered through the context menu not being preserved correctly across DPI changes.
 
 <br>
 
