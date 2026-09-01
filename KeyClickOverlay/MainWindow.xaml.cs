@@ -937,11 +937,6 @@ namespace KeyClickOverlay
             if (_isApplyingPreset)
                 return;
 
-            System.Diagnostics.Debug.WriteLine(
-                $"OnDpiChanged {DateTime.Now:HH:mm:ss.fff}: " +
-                $"{oldDpiScale.DpiScaleX:0.##} → {newDpiScale.DpiScaleX:0.##}, " +
-                $"pending={_pendingDpiCorrection != null}");
-
             var hwnd = new WindowInteropHelper(this).Handle;
             if (hwnd == 0 || WindowState != WindowState.Normal || !NativeMethods.GetWindowRect(hwnd, out var oldRect))
             {
@@ -952,9 +947,6 @@ namespace KeyClickOverlay
             var screen = WinForms.Screen.FromHandle(hwnd);
             var oldWorkArea = GetMonitorWorkArea(screen);
             var oldBounds = screen.Bounds;
-
-            System.Diagnostics.Debug.WriteLine(
-                $"  oldRect=({oldRect.Left},{oldRect.Top},{oldRect.Right},{oldRect.Bottom}) oldWorkArea={oldWorkArea}");
 
             int oldWidthPx = oldRect.Right - oldRect.Left;
             int oldHeightPx = oldRect.Bottom - oldRect.Top;
@@ -1002,9 +994,6 @@ namespace KeyClickOverlay
             {
                 try
                 {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"DPI correction {DateTime.Now:HH:mm:ss.fff}: target={newDpiScale.DpiScaleX:0.##}");
-
                     var settledScreen = WinForms.Screen.FromHandle(hwnd);
                     var settledWorkArea = GetMonitorWorkArea(settledScreen);
                     var settledBounds = settledScreen.Bounds;
@@ -1024,11 +1013,6 @@ namespace KeyClickOverlay
                         targetTopPx = settledWorkArea.Bottom + overlapPx - newHeightPx;
                     }
 
-                    System.Diagnostics.Debug.WriteLine(
-                        $"  rel=({relX:0.###},{relY:0.###}) overlapRatio={taskbarOverlapRatio:0.###} " +
-                        $"settledWorkArea={settledWorkArea} newSizePx=({newWidthPx},{newHeightPx}) " +
-                        $"target=({targetLeftPx:0},{targetTopPx:0})");
-
                     Left = targetLeftPx / newDpiScale.DpiScaleX;
                     Top = targetTopPx / newDpiScale.DpiScaleY;
                     Width = Math.Max(this.MinWidth, newWidthPx / newDpiScale.DpiScaleX);
@@ -1037,8 +1021,6 @@ namespace KeyClickOverlay
                     EnsureWindowVisibleOnScreen();
 
                     NativeMethods.GetWindowRect(hwnd, out var finalRect);
-                    System.Diagnostics.Debug.WriteLine(
-                        $"  final rect=({finalRect.Left},{finalRect.Top},{finalRect.Right},{finalRect.Bottom})");
 
                     UpdateActivePresetGeometry();
                 }
@@ -4796,22 +4778,21 @@ namespace KeyClickOverlay
                 return Math.Max(MinHeight, height);
             }
 
-            void ApplySize(double width, double height)
+            void ApplySize(double newW, double newH)
             {
-                SizeChangedEventHandler? captureHandler = null;
+                newW = Math.Max(MinWidth, newW);
+                newH = Math.Max(MinHeight, newH);
 
-                captureHandler = (_, __) =>
-                {
-                    SizeChanged -= captureHandler;
-                    CaptureTaskbarOverlap();
-                };
+                Width = newW;
+                Height = newH;
 
-                SizeChanged += captureHandler;
-
-                Width = Math.Max(MinWidth, width);
-                Height = Math.Max(MinHeight, height);
-
+                EnsureWindowVisibleOnScreen();
                 QueueFullRelayout();
+
+                // Capture the final taskbar overlap after the size change has settled
+                Dispatcher.BeginInvoke(
+                    new Action(CaptureTaskbarOverlap),
+                    DispatcherPriority.ApplicationIdle);
             }
 
             var widthInput = CreateNumericInput(
@@ -4971,21 +4952,16 @@ namespace KeyClickOverlay
 
             void ApplyBottomLeft(double x, double y)
             {
-                EventHandler? captureHandler = null;
-
-                captureHandler = (_, __) =>
-                {
-                    LocationChanged -= captureHandler;
-                    CaptureTaskbarOverlap();
-                };
-
-                LocationChanged += captureHandler;
-
                 Left = x;
                 Top = y - ReadCurrentHeight();
 
                 EnsureWindowVisibleOnScreen();
                 QueueFullRelayout();
+
+                // Capture the final taskbar overlap after the position change has settled
+                Dispatcher.BeginInvoke(
+                    new Action(CaptureTaskbarOverlap),
+                    DispatcherPriority.ApplicationIdle);
             }
 
             var xInput = CreateNumericInput(
