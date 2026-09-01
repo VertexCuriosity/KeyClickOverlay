@@ -942,13 +942,9 @@ namespace KeyClickOverlay
             double availableWidthOld = Math.Max(1.0, oldWorkArea.Width - oldWidthPx);
             double availableHeightOld = Math.Max(1.0, oldWorkArea.Height - oldHeightPx);
 
-            // Preserve taskbar overlap separately from normal work-area positioning
-            double oldTaskbarHeight = Math.Max(0.0, screen.Bounds.Bottom - oldWorkArea.Bottom);
-            double taskbarOverlapPx = Math.Max(0.0, oldRect.Bottom - oldWorkArea.Bottom);
-
-            double taskbarOverlapRatio = oldTaskbarHeight > 0.0
-                ? taskbarOverlapPx / oldTaskbarHeight
-                : 0.0;
+            // Preserve bottom position independently of taskbar/work-area changes
+            bool overlapsTaskbar = oldRect.Bottom > oldWorkArea.Bottom;
+            double bottomGapPx = screen.Bounds.Bottom - oldRect.Bottom;
 
             // Calculate relative position within the monitor work area
             double relX = (oldRect.Left - oldWorkArea.Left) / availableWidthOld;
@@ -964,8 +960,7 @@ namespace KeyClickOverlay
 
             if (oldRect.Top - oldWorkArea.Top <= edgeSnapPx)
                 relY = 0.0;
-            else if (taskbarOverlapRatio <= 0.0 &&
-                     oldWorkArea.Bottom - oldRect.Bottom <= edgeSnapPx)
+            else if (!overlapsTaskbar && oldWorkArea.Bottom - oldRect.Bottom <= edgeSnapPx)
                 relY = 1.0;
 
             relX = Math.Clamp(relX, 0.0, 1.0);
@@ -999,17 +994,12 @@ namespace KeyClickOverlay
                     double targetLeftPx = settledWorkArea.Left + (availableWidthNew * relX);
                     double targetTopPx = settledWorkArea.Top + (availableHeightNew * relY);
 
-                    // Preserve the same logical overlap with the taskbar
-                    if (taskbarOverlapRatio > 0.0)
-                    {
-                        double settledTaskbarHeight = Math.Max(0.0, settledScreen.Bounds.Bottom - settledWorkArea.Bottom);
-
-                        double overlapPx = settledTaskbarHeight * taskbarOverlapRatio;
-                        targetTopPx = settledWorkArea.Bottom + overlapPx - newHeightPx;
-                    }
+                    // Keep the same physical bottom position when overlapping the taskbar
+                    if (overlapsTaskbar)
+                        targetTopPx = settledScreen.Bounds.Bottom - bottomGapPx - newHeightPx;
 
                     System.Diagnostics.Debug.WriteLine(
-                        $"  rel=({relX:0.###},{relY:0.###}) overlapRatio={taskbarOverlapRatio:0.###} " +
+                        $"  rel=({relX:0.###},{relY:0.###}) bottomGap={bottomGapPx:0} " +
                         $"settledWorkArea={settledWorkArea} newSizePx=({newWidthPx},{newHeightPx}) " +
                         $"target=({targetLeftPx:0},{targetTopPx:0})");
 
