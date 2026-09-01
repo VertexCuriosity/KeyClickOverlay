@@ -931,6 +931,7 @@ namespace KeyClickOverlay
 
             var screen = WinForms.Screen.FromHandle(hwnd);
             var oldWorkArea = GetMonitorWorkArea(screen);
+            var oldBounds = screen.Bounds;
 
             System.Diagnostics.Debug.WriteLine(
                 $"  oldRect=({oldRect.Left},{oldRect.Top},{oldRect.Right},{oldRect.Bottom}) oldWorkArea={oldWorkArea}");
@@ -938,8 +939,8 @@ namespace KeyClickOverlay
             int oldWidthPx = oldRect.Right - oldRect.Left;
             int oldHeightPx = oldRect.Bottom - oldRect.Top;
 
-            double availableWidthOld = Math.Max(1.0, oldWorkArea.Width - oldWidthPx);
-            double availableHeightOld = Math.Max(1.0, oldWorkArea.Height - oldHeightPx);
+            double availableWidthOld = Math.Max(1.0, oldBounds.Width - oldWidthPx);
+            double availableHeightOld = Math.Max(1.0, oldBounds.Height - oldHeightPx);
 
             // Preserve the user's taskbar overlap across DPI changes
             bool overlapsTaskbar = oldRect.Bottom > oldWorkArea.Bottom;
@@ -951,8 +952,8 @@ namespace KeyClickOverlay
             double taskbarOverlapRatio = _taskbarOverlapRatio.GetValueOrDefault();
 
             // Calculate relative position within the monitor work area
-            double relX = (oldRect.Left - oldWorkArea.Left) / availableWidthOld;
-            double relY = (oldRect.Top - oldWorkArea.Top) / availableHeightOld;
+            double relX = (oldRect.Left - oldBounds.Left) / availableWidthOld;
+            double relY = (oldRect.Top - oldBounds.Top) / availableHeightOld;
 
             // Snap positions near the work-area edges
             const int edgeSnapPx = 16;
@@ -991,12 +992,13 @@ namespace KeyClickOverlay
 
                     var settledScreen = WinForms.Screen.FromHandle(hwnd);
                     var settledWorkArea = GetMonitorWorkArea(settledScreen);
+                    var settledBounds = settledScreen.Bounds;
 
-                    double availableWidthNew = Math.Max(1.0, settledWorkArea.Width - newWidthPx);
-                    double availableHeightNew = Math.Max(1.0, settledWorkArea.Height - newHeightPx);
+                    double availableWidthNew = Math.Max(1.0, settledBounds.Width - newWidthPx);
+                    double availableHeightNew = Math.Max(1.0, settledBounds.Height - newHeightPx);
 
-                    double targetLeftPx = settledWorkArea.Left + (availableWidthNew * relX);
-                    double targetTopPx = settledWorkArea.Top + (availableHeightNew * relY);
+                    double targetLeftPx = settledBounds.Left + (availableWidthNew * relX);
+                    double targetTopPx = settledBounds.Top + (availableHeightNew * relY);
 
                     // Preserve the same taskbar-overlap ratio at the new scale
                     if (taskbarOverlapRatio > 0.0)
