@@ -817,6 +817,11 @@ namespace KeyClickOverlay
             finally
             {
                 _isApplyingPreset = false;
+
+                // Capture the preset's final taskbar overlap after its geometry has settled
+                Dispatcher.BeginInvoke(
+                    new Action(CaptureTaskbarOverlap),
+                    DispatcherPriority.ApplicationIdle);
             }
         }
 
@@ -869,6 +874,21 @@ namespace KeyClickOverlay
             var dpi = VisualTreeHelper.GetDpi(this);
 
             return (screen.DeviceName, workArea, dpi.DpiScaleX, dpi.DpiScaleY);
+        }
+
+        /// <summary>Captures the current taskbar overlap while the window geometry is settled.</summary>
+        private void CaptureTaskbarOverlap()
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == 0 || !NativeMethods.GetWindowRect(hwnd, out var rect)) return;
+
+            var screen = WinForms.Screen.FromHandle(hwnd);
+            var workArea = screen.WorkingArea;
+            double taskbarHeight = Math.Max(0.0, screen.Bounds.Bottom - workArea.Bottom);
+
+            _taskbarOverlapRatio = taskbarHeight > 0.0 && rect.Bottom > workArea.Bottom
+                ? Math.Clamp((rect.Bottom - workArea.Bottom) / taskbarHeight, 0.0, 1.0)
+                : null;
         }
 
         /// <summary>Ensures the window stays visible on a connected monitor (handles monitor/DPI/layout changes).</summary>
@@ -944,11 +964,6 @@ namespace KeyClickOverlay
 
             // Preserve the user's taskbar overlap across DPI changes
             bool overlapsTaskbar = oldRect.Bottom > oldWorkArea.Bottom;
-            double taskbarHeight = Math.Max(0.0, screen.Bounds.Bottom - oldWorkArea.Bottom);
-
-            if (!_taskbarOverlapRatio.HasValue && overlapsTaskbar && taskbarHeight > 0.0)
-                _taskbarOverlapRatio = Math.Clamp((oldRect.Bottom - oldWorkArea.Bottom) / taskbarHeight, 0.0, 1.0);
-
             double taskbarOverlapRatio = _taskbarOverlapRatio.GetValueOrDefault();
 
             // Calculate relative position within the monitor work area
@@ -1070,21 +1085,25 @@ namespace KeyClickOverlay
             {
                 case Key.Left:
                     NudgeWindow(-step, 0);
+                    CaptureTaskbarOverlap();
                     e.Handled = true;
                     break;
 
                 case Key.Right:
                     NudgeWindow(step, 0);
+                    CaptureTaskbarOverlap();
                     e.Handled = true;
                     break;
 
                 case Key.Up:
                     NudgeWindow(0, -step);
+                    CaptureTaskbarOverlap();
                     e.Handled = true;
                     break;
 
                 case Key.Down:
                     NudgeWindow(0, step);
+                    CaptureTaskbarOverlap();
                     e.Handled = true;
                     break;
             }
@@ -1575,6 +1594,7 @@ namespace KeyClickOverlay
 
             // ---------- Window hooks & chrome ----------
             Loaded += OnMainWindowLoaded;
+            ContentRendered += (_, __) => CaptureTaskbarOverlap();
 
             PreviewKeyDown += OnNudgeWindowPreviewKeyDown;
 
@@ -1873,6 +1893,7 @@ namespace KeyClickOverlay
 
         /// <summary>Win32 constants used in <see cref="WndProc"/> to implement resizing on a borderless window.</summary>
         private const int WM_NCHITTEST = 0x0084;
+        private const int WM_EXITSIZEMOVE = 0x0232;
         private const int WM_TOGGLE_CLICKTHROUGH = 0x8001;
         private const int HTTRANSPARENT = -1;
         private const int HTBOTTOMRIGHT = 17;
@@ -1882,6 +1903,8 @@ namespace KeyClickOverlay
         /// <summary>Handle non-client hit-testing so the window can be resized/dragged.</summary>
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
+            if (msg == WM_EXITSIZEMOVE) CaptureTaskbarOverlap();
+
             // Handle our app-specific toggle message
             if (msg == WM_TOGGLE_CLICKTHROUGH)
             {
@@ -1890,6 +1913,9 @@ namespace KeyClickOverlay
                 handled = true;
                 return IntPtr.Zero;
             }
+
+            // Capture the new taskbar overlap after a manual move or resize
+            if (msg == WM_EXITSIZEMOVE) CaptureTaskbarOverlap();
 
             // In transparent mode, let Windows pass mouse hit-testing through this overlay
             // to the window underneath.
@@ -1903,7 +1929,7 @@ namespace KeyClickOverlay
             {
                 // Robustly extract signed screen coordinates from lParam (works on x86/x64)
                 int lp = lParam.ToInt32();
-                short sx = unchecked((short)(lp & 0xFFFF));          // LOWORD signed
+                short sx = unchecked((short)(lp & 0xFFFF));           // LOWORD signed
                 short sy = unchecked((short)((lp >> 16) & 0xFFFF));  // HIWORD signed
 
                 Point pos = PointFromScreen(new Point(sx, sy));
