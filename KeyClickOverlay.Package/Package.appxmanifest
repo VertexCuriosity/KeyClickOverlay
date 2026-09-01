@@ -10,7 +10,7 @@
 	<Identity
     Name="VertexCuriosity.KeyClickOverlay"
     Publisher="CN=5B942730-6804-4802-A866-F16A11F61292"
-    Version="1.1.0.0" />
+    Version="1.1.1.0" />
 
   <Properties>
     <DisplayName>KeyClickOverlay</DisplayName>

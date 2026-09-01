@@ -56,6 +56,37 @@ namespace KeyClickOverlay
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         internal static partial int MessageBeep(uint uType);
 
+        /// <summary>Returns the window bounds in physical screen coordinates.</summary>
+        [LibraryImport("user32.dll", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool GetWindowRect(nint hWnd, out RECT lpRect);
+
+        /// <summary>Returns the monitor nearest to a physical screen point.</summary>
+        [LibraryImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        private static partial nint MonitorFromPoint(POINT pt, uint dwFlags);
+
+        /// <summary>Returns the effective DPI for a monitor.</summary>
+        [LibraryImport("shcore.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        private static partial int GetDpiForMonitor(nint hmonitor, int dpiType, out uint dpiX, out uint dpiY);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int X;
+            public int Y;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal partial struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
 
         // === Eyedropper: screen DC & pixel ===
 
@@ -200,7 +231,48 @@ namespace KeyClickOverlay
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOSENDCHANGING);
         }
 
+        /// <summary>Moves a window to a physical screen position without changing its size or activation state.</summary>
+        public static void MoveWindowToScreenPoint(Window window, int x, int y)
+        {
+            if (window is null) return;
+
+            var hwnd = new WindowInteropHelper(window).Handle;
+            if (hwnd == 0) return;
+
+            _ = SetWindowPos(
+                hwnd,
+                0,
+                x, y, 0, 0,
+                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+        }
+
+        /// <summary>Returns the DPI scale for the monitor containing a physical screen point.</summary>
+        public static (double DpiScaleX, double DpiScaleY)? GetDpiScaleAtScreenPoint(int x, int y)
+        {
+            const uint MONITOR_DEFAULTTONEAREST = 2;
+            const int MDT_EFFECTIVE_DPI = 0;
+
+            nint monitor = MonitorFromPoint(new POINT { X = x, Y = y }, MONITOR_DEFAULTTONEAREST);
+            if (monitor == 0) return null;
+
+            int result = GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, out uint dpiX, out uint dpiY);
+            if (result != 0) return null;
+
+            return (dpiX / 96.0, dpiY / 96.0);
+        }
+
+        // === Show/Hide (used to suppress visible jitter during a live DPI/scale change) ===
+
+        internal const int SW_HIDE = 0;
+        internal const int SW_SHOWNOACTIVATE = 4;
+
+        [LibraryImport("user32.dll", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool ShowWindow(nint hWnd, int nCmdShow);
+
         // === Convenience ===
+
 
         /// <summary>Triggers native resize via SC_SIZE (direction is HT edge/corner offset 0..8).</summary>
         public static void NativeResizeWindow(nint handle, int direction)

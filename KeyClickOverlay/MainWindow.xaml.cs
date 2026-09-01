@@ -63,6 +63,7 @@ namespace KeyClickOverlay
         // === State ===
         private readonly Brush _fullyTransparentBrush = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
 
+        // --- UI / interaction state ---
         private bool _uiBuilt;                        // ensure SetupOverlayUI() runs only once
         private bool _transparentToMouse = false;
         private MenuItem? _transparentMenuItem;       // "Toggle Transparent-mode" menu item
@@ -75,22 +76,42 @@ namespace KeyClickOverlay
         private bool _syncingMenu = false;            // suppress menu handlers while syncing IsChecked
         private double _mouseAspectRatio = 1.0;       // width / height at pressed baseline
         private bool _mouseAspectLocked = false;      // true after first measure
+        private bool _isMouseOverWindow = false;      // chrome highlight on hover
 
+        // --- Background / appearance state ---
         private bool _backgroundEnabled = true;
         private Brush? _stripBackgroundBrushOn;
+        private Color _backgroundColorRgb = Color.FromRgb(63, 63, 63);              // background base color #3F3F3F (no alpha)
+        private double _backgroundOpacity = 112.0 / 255.0;                          // default background opacity (~44%)
+        private Color _mouseColorRgb = Color.FromRgb(0xE5, 0xE5, 0xE5);            // default mouse color (#e5e5e5)
+        private Color _fontColorRgb = Color.FromRgb(0xE5, 0xE5, 0xE5);             // default key/text/icon color (#e5e5e5)
+        private Color _keyFillRgb = Color.FromRgb(0x28, 0x28, 0x28);               // default key tile color (#282828)
+        private readonly SolidColorBrush _keyFillBrush = new(Color.FromRgb(0x28, 0x28, 0x28)); // mutable; DO NOT Freeze
+        private readonly SolidColorBrush _keyTextBrush = new(Color.FromRgb(0xE5, 0xE5, 0xE5)); // mutable; DO NOT Freeze
+
+        // --- Context menu / topmost state ---
         private ContextMenu? _globalContextMenu;
         private DateTime _lastContextMenuOpenUtc = DateTime.MinValue;
-
         private Window? _topmostTarget = null;                                      // null = main window; otherwise, a dialog to keep above
         private bool _suspendTopmostForMenu = false;                                // true while the context menu (or a submenu) is open
         private readonly DispatcherTimer _topmostPulse = new();                     // heartbeat that re-asserts TopMost
-        private Color _backgroundColorRgb = Color.FromRgb(63, 63, 63);              // background base color #3F3F3F (no alpha)
-        private double _backgroundOpacity = 112.0 / 255.0;                          // default background opacity (~44%)
-        private Color _mouseColorRgb = Color.FromRgb(0xE5, 0xE5, 0xE5);              // default mouse color (#e5e5e5)
-        private Color _fontColorRgb = Color.FromRgb(0xE5, 0xE5, 0xE5);              // default key/text/icon color (#e5e5e5)
-        private Color _keyFillRgb = Color.FromRgb(0x28, 0x28, 0x28);                // default key tile color (#282828)
-        private readonly SolidColorBrush _keyFillBrush = new(Color.FromRgb(0x28, 0x28, 0x28)); // mutable; DO NOT Freeze
-        private readonly SolidColorBrush _keyTextBrush = new(Color.FromRgb(0xE5, 0xE5, 0xE5)); // mutable; DO NOT Freeze
+
+        // --- DPI / preset geometry state ---
+        private readonly DispatcherTimer _dpiSettleTimer = new() { Interval = TimeSpan.FromMilliseconds(150) }; // wait until DPI-related window changes settle
+        private Action? _pendingDpiCorrection;                                      // final size/position correction after a DPI change
+        private bool _isApplyingPreset;
+        private double? _taskbarOverlapRatio;
+
+        // --- Layout state ---
+        private bool _relayoutQueued = false;       // coalesce full layout recomputes to once per frame
+        private double _lastWindowHeight = -1;      // guard: only rerun when height actually changed
+        private const double DefaultPillPadFactor = 0.70;     // startup default
+        private const double DefaultPillCornerFactor = 0.60;  // startup default
+        private double _lastScaleFactor = -1;
+        private double _lastPadFactor = double.NaN;
+        private double _lastCornerFactor = double.NaN;
+
+        // --- Mouse SVG resources ---
         private static readonly string[] MouseSvgNames =
         [
             "mouse_idle.svg",
@@ -100,15 +121,9 @@ namespace KeyClickOverlay
             "mouse_scrolldown.svg",
             "mouse_scrollup.svg"
         ];
+
+        // --- Shared styles ---
         private static Style? _pixiColorPickerStyle;
-        private bool _isMouseOverWindow = false;      // chrome highlight on hover
-        private bool _relayoutQueued = false;   // coalesce full layout recomputes to once per frame
-        private double _lastWindowHeight = -1;  // guard: only rerun when height actually changed
-        private const double DefaultPillPadFactor = 0.70;     // startup default
-        private const double DefaultPillCornerFactor = 0.60;  // startup default
-        private double _lastScaleFactor = -1;
-        private double _lastPadFactor = double.NaN;
-        private double _lastCornerFactor = double.NaN;
 
 
         // === UI Elements ===
@@ -327,28 +342,16 @@ namespace KeyClickOverlay
         {
             string transparentLabel = GetTransparentHotkeyLabel();
 
-            if (_transparentMenuItem != null)
-            {
-                _transparentMenuItem.ToolTip =
-                    $"Disables mouse interaction with KeyClickOverlay. Exit with {transparentLabel} or via the taskbar hover menu (hover its icon).";
-            }
+            _transparentMenuItem?.ToolTip =
+                $"Disables mouse interaction with KeyClickOverlay. Exit with {transparentLabel} or via the taskbar hover menu (hover its icon).";
 
-            if (_transparentThumbButton != null)
-            {
-                _transparentThumbButton.Tooltip = $"Transparent-mode ({transparentLabel})";
-            }
+            _transparentThumbButton?.Tooltip = $"Transparent-mode ({transparentLabel})";
 
-            if (_pauseThumbButton != null)
-            {
-                _pauseThumbButton.Tooltip = _overlayPaused
-                    ? $"Resume KeyClickOverlay ({GetPauseOverlayHotkeyLabel()})"
-                    : $"Pause KeyClickOverlay ({GetPauseOverlayHotkeyLabel()})";
-            }
+            _pauseThumbButton?.Tooltip = _overlayPaused
+                ? $"Resume KeyClickOverlay ({GetPauseOverlayHotkeyLabel()})"
+                : $"Pause KeyClickOverlay ({GetPauseOverlayHotkeyLabel()})";
 
-            if (_clearThumbButton != null)
-            {
-                _clearThumbButton.Tooltip = $"Clear keys ({GetClearOverlayHotkeyLabel()})";
-            }
+            _clearThumbButton?.Tooltip = $"Clear keys ({GetClearOverlayHotkeyLabel()})";
         }
 
         /// <summary>Update the taskbar Pause/Play button to match the current overlay state.</summary>
@@ -477,10 +480,23 @@ namespace KeyClickOverlay
         private sealed class PresetData
         {
             // --- Window geometry & position ---
-            public double WindowWidth { get; set; }   // px
-            public double WindowHeight { get; set; }  // px
-            public double WindowLeft { get; set; }    // screen X (px)
-            public double WindowTop { get; set; }     // screen Y (px)
+            public double WindowWidth { get; set; }   // Window width (DIPs)
+            public double WindowHeight { get; set; }  // Window height (DIPs)
+            public double WindowLeft { get; set; }    // Window X position (DIPs)
+            public double WindowTop { get; set; }     // Window Y position (DIPs)
+
+            // --- Monitor-aware placement ---
+            public string? MonitorDeviceName { get; set; }  // Windows device name of the monitor
+            public double? MonitorRelativeX { get; set; }   // Relative horizontal position within the monitor work area (0.0–1.0)
+            public double? MonitorRelativeY { get; set; }   // Relative vertical position within the monitor work area (0.0–1.0)
+
+            public double? MonitorLeft { get; set; }    // Monitor work-area left edge (physical pixels)
+            public double? MonitorTop { get; set; }     // Monitor work-area top edge (physical pixels)
+            public double? MonitorWidth { get; set; }   // Monitor work-area width (physical pixels)
+            public double? MonitorHeight { get; set; }  // Monitor work-area height (physical pixels)
+
+            public double? DpiScaleX { get; set; }  // Horizontal DPI scale when the preset was saved
+            public double? DpiScaleY { get; set; }  // Vertical DPI scale when the preset was saved
 
             // --- Modes / toggles ---
             public bool MouseEnabled { get; set; }          // show mouse visual + process mouse input
@@ -548,6 +564,9 @@ namespace KeyClickOverlay
                 ? new Rect(Left, Top, width, height)
                 : RestoreBounds;
 
+            var placement = ComputeCurrentRelativePlacement(normal);
+            var monitor = GetCurrentMonitorInfo();
+
             return new PresetData
             {
                 WindowWidth = Math.Max(1.0, width),
@@ -556,6 +575,17 @@ namespace KeyClickOverlay
                 // Position (older presets may deserialize to 0)
                 WindowLeft = normal.Left,
                 WindowTop = normal.Top,
+
+                // Monitor-aware placement
+                MonitorDeviceName = placement.DeviceName,
+                MonitorRelativeX = placement.RelativeX,
+                MonitorRelativeY = placement.RelativeY,
+                MonitorLeft = monitor.WorkArea.Left,
+                MonitorTop = monitor.WorkArea.Top,
+                MonitorWidth = monitor.WorkArea.Width,
+                MonitorHeight = monitor.WorkArea.Height,
+                DpiScaleX = monitor.DpiScaleX,
+                DpiScaleY = monitor.DpiScaleY,
 
                 MouseEnabled = _mouseEnabled,
                 BackgroundEnabled = _backgroundEnabled,
@@ -571,6 +601,87 @@ namespace KeyClickOverlay
                 PillPadFactor = _pillPadFactor,
                 PillCornerFactor = _pillCornerFactor
             };
+        }
+
+        /// <summary>Updates only the window geometry of the active preset.</summary>
+        private void UpdateActivePresetGeometry()
+        {
+            try
+            {
+                string? path = _prefs.LastPresetPath;
+                if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                    return;
+
+                string json = File.ReadAllText(path);
+                var preset = JsonSerializer.Deserialize<PresetData>(json, PrefsJsonOptions);
+                if (preset is null)
+                    return;
+
+                var geometry = BuildPresetFromCurrent();
+
+                preset.WindowWidth = geometry.WindowWidth;
+                preset.WindowHeight = geometry.WindowHeight;
+                preset.WindowLeft = geometry.WindowLeft;
+                preset.WindowTop = geometry.WindowTop;
+
+                preset.MonitorDeviceName = geometry.MonitorDeviceName;
+                preset.MonitorRelativeX = geometry.MonitorRelativeX;
+                preset.MonitorRelativeY = geometry.MonitorRelativeY;
+
+                preset.MonitorLeft = geometry.MonitorLeft;
+                preset.MonitorTop = geometry.MonitorTop;
+                preset.MonitorWidth = geometry.MonitorWidth;
+                preset.MonitorHeight = geometry.MonitorHeight;
+
+                preset.DpiScaleX = geometry.DpiScaleX;
+                preset.DpiScaleY = geometry.DpiScaleY;
+
+                json = JsonSerializer.Serialize(preset, PrefsJsonOptions);
+                File.WriteAllText(path, json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"Failed to update active preset geometry: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Computes this window's position as a fraction (0..1) of its current monitor's work
+        /// area, in exact physical pixels. Shared by preset saving and by the live DPI-change
+        /// tracker below, so both use identical math.
+        /// </summary>
+        private (string? DeviceName, double RelativeX, double RelativeY) ComputeCurrentRelativePlacement(Rect normalDip)
+        {
+            var monitor = GetCurrentMonitorInfo();
+
+            double windowLeftPx, windowTopPx, windowWidthPx, windowHeightPx;
+            var hwnd = new WindowInteropHelper(this).Handle;
+
+            if (hwnd != 0 && WindowState == WindowState.Normal && NativeMethods.GetWindowRect(hwnd, out var rect))
+            {
+                windowLeftPx = rect.Left;
+                windowTopPx = rect.Top;
+                windowWidthPx = rect.Right - rect.Left;
+                windowHeightPx = rect.Bottom - rect.Top;
+            }
+            else
+            {
+                // Fallback for the rare case the HWND isn't available yet (e.g. minimized/maximized).
+                var dpi = VisualTreeHelper.GetDpi(this);
+                windowLeftPx = normalDip.Left * dpi.DpiScaleX;
+                windowTopPx = normalDip.Top * dpi.DpiScaleY;
+                windowWidthPx = normalDip.Width * dpi.DpiScaleX;
+                windowHeightPx = normalDip.Height * dpi.DpiScaleY;
+            }
+
+            double availableWidth = Math.Max(1.0, monitor.WorkArea.Width - windowWidthPx);
+            double availableHeight = Math.Max(1.0, monitor.WorkArea.Height - windowHeightPx);
+
+            double relativeX = (windowLeftPx - monitor.WorkArea.Left) / availableWidth;
+            double relativeY = (windowTopPx - monitor.WorkArea.Top) / availableHeight;
+
+            return (monitor.DeviceName, relativeX, relativeY);
         }
 
         /// <summary>Convert “#RRGGBB” to Color; returns Black on invalid.</summary>
@@ -589,79 +700,338 @@ namespace KeyClickOverlay
         /// <summary>Apply a preset object to the running app.</summary>
         private void ApplyPresetFromData(PresetData p, bool preserveTransparentMode = false)
         {
-            bool wasTransparent = _transparentToMouse;
+            _isApplyingPreset = true;
 
-            // Size
-            Width = Math.Max(this.MinWidth, p.WindowWidth);
-            Height = Math.Max(this.MinHeight, p.WindowHeight);
+            // A preset owns the window geometry; discard any older DPI correction
+            _dpiSettleTimer.Stop();
+            _pendingDpiCorrection = null;
 
-            // Position (older presets may have 0/0)
-            if (p.WindowLeft != 0 || p.WindowTop != 0)
+            try
             {
-                Left = p.WindowLeft;
-                Top = p.WindowTop;
-                ClampWindowToVirtualScreen(); // keep fully visible
+                bool wasTransparent = _transparentToMouse;
+
+                // Size
+                Height = Math.Max(this.MinHeight, p.WindowHeight);
+
+                // Position
+                var monitor = FindMonitor(p.MonitorDeviceName);
+
+                if (monitor == null &&
+                    p.MonitorLeft.HasValue &&
+                    p.MonitorTop.HasValue &&
+                    p.MonitorWidth.HasValue &&
+                    p.MonitorHeight.HasValue)
+                {
+                    monitor = FindMonitorByWorkArea(
+                        p.MonitorLeft.Value,
+                        p.MonitorTop.Value,
+                        p.MonitorWidth.Value,
+                        p.MonitorHeight.Value);
+                }
+
+                if (monitor != null && p.MonitorRelativeX.HasValue && p.MonitorRelativeY.HasValue)
+                {
+                    // Restore relative to the saved monitor
+                    var workArea = GetMonitorWorkArea(monitor);
+
+                    // Use the target monitor's current DPI
+                    var targetDpi = NativeMethods.GetDpiScaleAtScreenPoint(
+                        (int)Math.Round(workArea.Left + (workArea.Width / 2.0)),
+                        (int)Math.Round(workArea.Top + (workArea.Height / 2.0)));
+
+                    var dpi = targetDpi ?? (VisualTreeHelper.GetDpi(this).DpiScaleX, VisualTreeHelper.GetDpi(this).DpiScaleY);
+
+                    // Preserve the physical width when restoring across a different display scale
+                    double savedDpiScaleX = p.DpiScaleX.GetValueOrDefault(dpi.DpiScaleX);
+                    double savedWidthPx = p.WindowWidth * savedDpiScaleX;
+
+                    Width = Math.Max(this.MinWidth, savedWidthPx / dpi.DpiScaleX);
+
+                    double windowWidthPx = Width * dpi.DpiScaleX;
+                    double windowHeightPx = Height * dpi.DpiScaleY;
+                    double availableWidth = Math.Max(1.0, workArea.Width - windowWidthPx);
+                    double availableHeight = Math.Max(1.0, workArea.Height - windowHeightPx);
+
+                    double targetLeftPx = workArea.Left + (availableWidth * p.MonitorRelativeX.Value);
+                    double targetTopPx = workArea.Top + (availableHeight * p.MonitorRelativeY.Value);
+
+                    // Move directly in physical screen pixels when the HWND is available
+                    var hwndForMove = new WindowInteropHelper(this).Handle;
+                    if (hwndForMove != 0)
+                    {
+                        NativeMethods.MoveWindowToScreenPoint(this, (int)Math.Round(targetLeftPx), (int)Math.Round(targetTopPx));
+                    }
+                    else
+                    {
+                        // Fall back to DIP coordinates before the HWND exists
+                        Left = targetLeftPx / dpi.DpiScaleX;
+                        Top = targetTopPx / dpi.DpiScaleY;
+                    }
+                }
+                else if (p.WindowLeft != 0 || p.WindowTop != 0)
+                {
+                    // Fall back to absolute geometry for older presets
+                    Width = Math.Max(this.MinWidth, p.WindowWidth);
+                    Left = p.WindowLeft;
+                    Top = p.WindowTop;
+                }
+
+                EnsureWindowVisibleOnScreen(); // keep visible
+
+                // Toggles / modes
+                ApplyMouseEnabled(p.MouseEnabled);
+                SetBackgroundEnabled(p.BackgroundEnabled);
+                ApplyMouseOnlyMode(p.MouseOnlyBackground);
+                SetTransparentMode(false, withPrompt: false); // ensure interactive while applying
+
+                // Colors
+                _mouseColorRgb = FromHex(p.MouseColor);
+                _fontColorRgb = FromHex(p.FontColor);
+                _keyFillRgb = FromHex(p.KeyFill);
+
+                _keyTextBrush.Color = _fontColorRgb;
+                _keyFillBrush.Color = _keyFillRgb;
+                RetintAllKeyIconsForFontColor();
+
+                PrecacheAllMouseSvgsForColor(_mouseColorRgb);
+                SetMouseSvg(_currentMouseImage ?? "mouse_idle.svg");
+
+                // Background color/opacity
+                _backgroundColorRgb = FromHex(p.BackgroundRgb);
+                _backgroundOpacity = Math.Clamp(p.BackgroundOpacity, 0, 1);
+                ApplyBackgroundBrushFromState();
+
+                // Factors
+                _pillPadFactor = p.PillPadFactor;
+                _pillCornerFactor = p.PillCornerFactor;
+
+                // Layout refresh
+                UpdateStripBackgroundMetrics();
+                UpdateChromeButtons();
+
+                // Restore transparent mode when preset switching should preserve it
+                if (preserveTransparentMode && wasTransparent)
+                    SetTransparentMode(true, withPrompt: false);
+
             }
+            finally
+            {
+                _isApplyingPreset = false;
 
-            // Toggles / modes
-            ApplyMouseEnabled(p.MouseEnabled);
-            SetBackgroundEnabled(p.BackgroundEnabled);
-            ApplyMouseOnlyMode(p.MouseOnlyBackground);
-            SetTransparentMode(false, withPrompt: false); // ensure interactive while applying
-
-            // Colors
-            _mouseColorRgb = FromHex(p.MouseColor);
-            _fontColorRgb = FromHex(p.FontColor);
-            _keyFillRgb = FromHex(p.KeyFill);
-
-            _keyTextBrush.Color = _fontColorRgb;
-            _keyFillBrush.Color = _keyFillRgb;
-            RetintAllKeyIconsForFontColor();
-
-            PrecacheAllMouseSvgsForColor(_mouseColorRgb);
-            SetMouseSvg(_currentMouseImage ?? "mouse_idle.svg");
-
-            // Background color/opacity
-            _backgroundColorRgb = FromHex(p.BackgroundRgb);
-            _backgroundOpacity = Math.Clamp(p.BackgroundOpacity, 0, 1);
-            ApplyBackgroundBrushFromState();
-
-            // Factors
-            _pillPadFactor = p.PillPadFactor;
-            _pillCornerFactor = p.PillCornerFactor;
-
-            // Layout refresh
-            UpdateStripBackgroundMetrics();
-            UpdateChromeButtons();
-
-            // Preset switching should not force the app out of transparent mode when requested.
-            if (preserveTransparentMode && wasTransparent)
-                SetTransparentMode(true, withPrompt: false);
+                // Capture the preset's final taskbar overlap after its geometry has settled
+                Dispatcher.BeginInvoke(
+                    new Action(CaptureTaskbarOverlap),
+                    DispatcherPriority.ApplicationIdle);
+            }
         }
 
 
         // === Window placement & bounds ===
 
-        /// <summary>Ensures the window stays visible on the current virtual desktop area (handles monitor/DPI/layout changes).</summary>
-        private void ClampWindowToVirtualScreen()
+        /// <summary>Finds a connected monitor by its Windows device name.</summary>
+        private static WinForms.Screen? FindMonitor(string? deviceName)
         {
-            // Virtual desktop bounds across all monitors
-            double vx = SystemParameters.VirtualScreenLeft;
-            double vy = SystemParameters.VirtualScreenTop;
-            double vw = SystemParameters.VirtualScreenWidth;
-            double vh = SystemParameters.VirtualScreenHeight;
+            if (string.IsNullOrWhiteSpace(deviceName)) return null;
 
-            // Clamp Left/Top so the window's title/body stays reachable
-            double minVisible = 24; // require at least 24px visible
+            return WinForms.Screen.AllScreens.FirstOrDefault(
+                screen => string.Equals(screen.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase));
+        }
 
-            double maxLeft = vx + vw - minVisible;
-            double maxTop = vy + vh - minVisible;
+        /// <summary>Returns a monitor work area in physical screen pixels.</summary>
+        private static Rect GetMonitorWorkArea(WinForms.Screen screen)
+        {
+            var workArea = screen.WorkingArea;
 
-            if (double.IsNaN(Left)) Left = vx;
-            if (double.IsNaN(Top)) Top = vy;
+            return new Rect(
+                workArea.Left,
+                workArea.Top,
+                workArea.Width,
+                workArea.Height);
+        }
 
-            Left = Math.Min(Math.Max(Left, vx - (Width - minVisible)), maxLeft);
-            Top = Math.Min(Math.Max(Top, vy - (Height - minVisible)), maxTop);
+        /// <summary>Finds a connected monitor matching a saved work area.</summary>
+        private static WinForms.Screen? FindMonitorByWorkArea(double left, double top, double width, double height)
+        {
+            const double tolerance = 8.0;
+
+            return WinForms.Screen.AllScreens.FirstOrDefault(screen =>
+            {
+                var workArea = screen.WorkingArea;
+
+                return Math.Abs(workArea.Left - left) <= tolerance &&
+                       Math.Abs(workArea.Top - top) <= tolerance &&
+                       Math.Abs(workArea.Width - width) <= tolerance &&
+                       Math.Abs(workArea.Height - height) <= tolerance;
+            });
+        }
+
+        /// <summary>Returns the work area and DPI scale of the monitor containing KeyClickOverlay.</summary>
+        private (string DeviceName, Rect WorkArea, double DpiScaleX, double DpiScaleY) GetCurrentMonitorInfo()
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            var screen = WinForms.Screen.FromHandle(hwnd);
+            var workArea = GetMonitorWorkArea(screen);
+            var dpi = VisualTreeHelper.GetDpi(this);
+
+            return (screen.DeviceName, workArea, dpi.DpiScaleX, dpi.DpiScaleY);
+        }
+
+        /// <summary>Captures the current taskbar overlap while the window geometry is settled.</summary>
+        private void CaptureTaskbarOverlap()
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == 0 || !NativeMethods.GetWindowRect(hwnd, out var rect)) return;
+
+            var screen = WinForms.Screen.FromHandle(hwnd);
+            var workArea = screen.WorkingArea;
+            double taskbarHeight = Math.Max(0.0, screen.Bounds.Bottom - workArea.Bottom);
+
+            _taskbarOverlapRatio = taskbarHeight > 0.0 && rect.Bottom > workArea.Bottom
+                ? Math.Clamp((rect.Bottom - workArea.Bottom) / taskbarHeight, 0.0, 1.0)
+                : null;
+        }
+
+        /// <summary>Ensures the window stays visible on a connected monitor (handles monitor/DPI/layout changes).</summary>
+        private void EnsureWindowVisibleOnScreen()
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == 0) return;
+            if (!NativeMethods.GetWindowRect(hwnd, out var rect)) return;
+
+            const int minVisible = 24;
+
+            int windowWidth = rect.Right - rect.Left;
+            int windowHeight = rect.Bottom - rect.Top;
+
+            // Keep the current position if enough of the window is visible on any connected monitor
+            foreach (var screen in WinForms.Screen.AllScreens)
+            {
+                var bounds = screen.Bounds;
+
+                int visibleWidth = Math.Min(rect.Right, bounds.Right) - Math.Max(rect.Left, bounds.Left);
+                int visibleHeight = Math.Min(rect.Bottom, bounds.Bottom) - Math.Max(rect.Top, bounds.Top);
+
+                if (visibleWidth >= minVisible && visibleHeight >= minVisible)
+                    return;
+            }
+
+            // Move an off-screen window onto the nearest connected monitor
+            var windowRect = new System.Drawing.Rectangle(rect.Left, rect.Top, windowWidth, windowHeight);
+            var nearestScreen = WinForms.Screen.FromRectangle(windowRect);
+            var nearestBounds = nearestScreen.Bounds;
+
+            int maxLeft = Math.Max(nearestBounds.Left, nearestBounds.Right - windowWidth);
+            int maxTop = Math.Max(nearestBounds.Top, nearestBounds.Bottom - windowHeight);
+
+            int targetLeft = Math.Clamp(rect.Left, nearestBounds.Left, maxLeft);
+            int targetTop = Math.Clamp(rect.Top, nearestBounds.Top, maxTop);
+
+            NativeMethods.MoveWindowToScreenPoint(this, targetLeft, targetTop);
+        }
+
+        /// <summary>
+        /// Handles live DPI changes while preserving the window's relative screen width and position.
+        /// </summary>
+        protected override void OnDpiChanged(DpiScale oldDpiScale, DpiScale newDpiScale)
+        {
+            if (_isApplyingPreset)
+                return;
+
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == 0 || WindowState != WindowState.Normal || !NativeMethods.GetWindowRect(hwnd, out var oldRect))
+            {
+                base.OnDpiChanged(oldDpiScale, newDpiScale);
+                return;
+            }
+
+            var screen = WinForms.Screen.FromHandle(hwnd);
+            var oldWorkArea = GetMonitorWorkArea(screen);
+            var oldBounds = screen.Bounds;
+
+            int oldWidthPx = oldRect.Right - oldRect.Left;
+            int oldHeightPx = oldRect.Bottom - oldRect.Top;
+
+            double availableWidthOld = Math.Max(1.0, oldBounds.Width - oldWidthPx);
+            double availableHeightOld = Math.Max(1.0, oldBounds.Height - oldHeightPx);
+
+            // Preserve the user's taskbar overlap across DPI changes
+            bool overlapsTaskbar = oldRect.Bottom > oldWorkArea.Bottom;
+            double taskbarOverlapRatio = _taskbarOverlapRatio.GetValueOrDefault();
+
+            // Calculate relative position within the monitor work area
+            double relX = (oldRect.Left - oldBounds.Left) / availableWidthOld;
+            double relY = (oldRect.Top - oldBounds.Top) / availableHeightOld;
+
+            // Snap positions near the work-area edges
+            const int edgeSnapPx = 16;
+
+            if (oldRect.Left - oldWorkArea.Left <= edgeSnapPx)
+                relX = 0.0;
+            else if (oldWorkArea.Right - oldRect.Right <= edgeSnapPx)
+                relX = 1.0;
+
+            if (oldRect.Top - oldWorkArea.Top <= edgeSnapPx)
+                relY = 0.0;
+            else if (!overlapsTaskbar && oldWorkArea.Bottom - oldRect.Bottom <= edgeSnapPx)
+                relY = 1.0;
+
+            relX = Math.Clamp(relX, 0.0, 1.0);
+            relY = Math.Clamp(relY, 0.0, 1.0);
+
+            // WIDTH: preserve the same physical pixel footprint (same percentage of the screen).
+            int newWidthPx = oldWidthPx;
+
+            // HEIGHT: keep the same DIP height so the physical height follows the new DPI scale
+            // and the app content remains visually consistent.
+            int newHeightPx = (int)Math.Round(Height * newDpiScale.DpiScaleY);
+
+            // Hide the HWND during the transition so WPF's intermediate resize steps aren't visible.
+            NativeMethods.ShowWindow(hwnd, NativeMethods.SW_HIDE);
+
+            // Wait until WPF's SizeChanged/LocationChanged activity has settled, then apply
+            // the final size and position using the updated monitor work area.
+            _pendingDpiCorrection = () =>
+            {
+                try
+                {
+                    var settledScreen = WinForms.Screen.FromHandle(hwnd);
+                    var settledWorkArea = GetMonitorWorkArea(settledScreen);
+                    var settledBounds = settledScreen.Bounds;
+
+                    double availableWidthNew = Math.Max(1.0, settledBounds.Width - newWidthPx);
+                    double availableHeightNew = Math.Max(1.0, settledBounds.Height - newHeightPx);
+
+                    double targetLeftPx = settledBounds.Left + (availableWidthNew * relX);
+                    double targetTopPx = settledBounds.Top + (availableHeightNew * relY);
+
+                    // Preserve the same taskbar-overlap ratio at the new scale
+                    if (taskbarOverlapRatio > 0.0)
+                    {
+                        double settledTaskbarHeight = Math.Max(0.0, settledScreen.Bounds.Bottom - settledWorkArea.Bottom);
+                        double overlapPx = settledTaskbarHeight * taskbarOverlapRatio;
+
+                        targetTopPx = settledWorkArea.Bottom + overlapPx - newHeightPx;
+                    }
+
+                    Left = targetLeftPx / newDpiScale.DpiScaleX;
+                    Top = targetTopPx / newDpiScale.DpiScaleY;
+                    Width = Math.Max(this.MinWidth, newWidthPx / newDpiScale.DpiScaleX);
+                    Height = Math.Max(this.MinHeight, newHeightPx / newDpiScale.DpiScaleY);
+
+                    EnsureWindowVisibleOnScreen();
+
+                    NativeMethods.GetWindowRect(hwnd, out var finalRect);
+
+                    UpdateActivePresetGeometry();
+                }
+                finally
+                {
+                    NativeMethods.ShowWindow(hwnd, NativeMethods.SW_SHOWNOACTIVATE);
+                }
+            };
+
+            _dpiSettleTimer.Stop();
+            _dpiSettleTimer.Start();
         }
 
         /// <summary>Move the window by a small delta in DIPs, then clamp to visible bounds.</summary>
@@ -669,7 +1039,7 @@ namespace KeyClickOverlay
         {
             Left += dx;
             Top += dy;
-            ClampWindowToVirtualScreen();
+            EnsureWindowVisibleOnScreen();
         }
 
         /// <summary>
@@ -697,21 +1067,25 @@ namespace KeyClickOverlay
             {
                 case Key.Left:
                     NudgeWindow(-step, 0);
+                    CaptureTaskbarOverlap();
                     e.Handled = true;
                     break;
 
                 case Key.Right:
                     NudgeWindow(step, 0);
+                    CaptureTaskbarOverlap();
                     e.Handled = true;
                     break;
 
                 case Key.Up:
                     NudgeWindow(0, -step);
+                    CaptureTaskbarOverlap();
                     e.Handled = true;
                     break;
 
                 case Key.Down:
                     NudgeWindow(0, step);
+                    CaptureTaskbarOverlap();
                     e.Handled = true;
                     break;
             }
@@ -924,7 +1298,7 @@ namespace KeyClickOverlay
             Left = wa.Left;
             Top = wa.Bottom - Height;   // bottom-left anchor
 
-            ClampWindowToVirtualScreen();  // keep fully visible on current monitor setup
+            EnsureWindowVisibleOnScreen();  // keep fully visible on current monitor setup
 
             // Re-apply visuals
             SetMouseSvg(_currentMouseImage ?? "mouse_idle.svg");
@@ -1202,6 +1576,7 @@ namespace KeyClickOverlay
 
             // ---------- Window hooks & chrome ----------
             Loaded += OnMainWindowLoaded;
+            ContentRendered += (_, __) => CaptureTaskbarOverlap();
 
             PreviewKeyDown += OnNudgeWindowPreviewKeyDown;
 
@@ -1231,10 +1606,23 @@ namespace KeyClickOverlay
             StateChanged += (_, __) => this.ReassertTopmost();
             IsVisibleChanged += (_, __) => this.ReassertTopmost();
 
+            // Restart the DPI settle timer while WPF is still changing the window
+            SizeChanged += (_, __) => { if (_pendingDpiCorrection != null) { _dpiSettleTimer.Stop(); _dpiSettleTimer.Start(); } };
+            LocationChanged += (_, __) => { if (_pendingDpiCorrection != null) { _dpiSettleTimer.Stop(); _dpiSettleTimer.Start(); } };
+
             // Light heartbeat to cover rare z-order steals (every 2 seconds)
             _topmostPulse.Interval = TimeSpan.FromSeconds(2);
             _topmostPulse.Tick += (_, __) => this.ReassertTopmost();
             _topmostPulse.Start();
+
+            // Apply the pending DPI correction once window changes have settled
+            _dpiSettleTimer.Tick += (_, __) =>
+            {
+                _dpiSettleTimer.Stop();
+                var correction = _pendingDpiCorrection;
+                _pendingDpiCorrection = null;
+                correction?.Invoke();
+            };
             this.ReassertTopmost(); // Assert TopMost once right away (covers any style changes during startup)
 
             // ---------- Stage initial mouse SVG + pill width after first layout ----------
@@ -1487,6 +1875,7 @@ namespace KeyClickOverlay
 
         /// <summary>Win32 constants used in <see cref="WndProc"/> to implement resizing on a borderless window.</summary>
         private const int WM_NCHITTEST = 0x0084;
+        private const int WM_EXITSIZEMOVE = 0x0232;
         private const int WM_TOGGLE_CLICKTHROUGH = 0x8001;
         private const int HTTRANSPARENT = -1;
         private const int HTBOTTOMRIGHT = 17;
@@ -1496,6 +1885,7 @@ namespace KeyClickOverlay
         /// <summary>Handle non-client hit-testing so the window can be resized/dragged.</summary>
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
+
             // Handle our app-specific toggle message
             if (msg == WM_TOGGLE_CLICKTHROUGH)
             {
@@ -1504,6 +1894,9 @@ namespace KeyClickOverlay
                 handled = true;
                 return IntPtr.Zero;
             }
+
+            // Capture the new taskbar overlap after a manual move or resize
+            if (msg == WM_EXITSIZEMOVE) CaptureTaskbarOverlap();
 
             // In transparent mode, let Windows pass mouse hit-testing through this overlay
             // to the window underneath.
@@ -1517,7 +1910,7 @@ namespace KeyClickOverlay
             {
                 // Robustly extract signed screen coordinates from lParam (works on x86/x64)
                 int lp = lParam.ToInt32();
-                short sx = unchecked((short)(lp & 0xFFFF));          // LOWORD signed
+                short sx = unchecked((short)(lp & 0xFFFF));           // LOWORD signed
                 short sy = unchecked((short)((lp >> 16) & 0xFFFF));  // HIWORD signed
 
                 Point pos = PointFromScreen(new Point(sx, sy));
@@ -1721,7 +2114,7 @@ namespace KeyClickOverlay
             void CloseContextMenu()
             {
                 savePresetMenu.IsSubmenuOpen = false;
-                if (cm != null) cm.IsOpen = false;
+                cm?.IsOpen = false;
             }
 
             // Remove the default padding inside the submenu popup
@@ -4385,13 +4778,21 @@ namespace KeyClickOverlay
                 return Math.Max(MinHeight, height);
             }
 
-            void ApplySize(double width, double height)
+            void ApplySize(double newW, double newH)
             {
-                Width = Math.Max(MinWidth, width);
-                Height = Math.Max(MinHeight, height);
+                newW = Math.Max(MinWidth, newW);
+                newH = Math.Max(MinHeight, newH);
 
-                ClampWindowToVirtualScreen();
+                Width = newW;
+                Height = newH;
+
+                EnsureWindowVisibleOnScreen();
                 QueueFullRelayout();
+
+                // Capture the final taskbar overlap after the size change has settled
+                Dispatcher.BeginInvoke(
+                    new Action(CaptureTaskbarOverlap),
+                    DispatcherPriority.ApplicationIdle);
             }
 
             var widthInput = CreateNumericInput(
@@ -4554,8 +4955,13 @@ namespace KeyClickOverlay
                 Left = x;
                 Top = y - ReadCurrentHeight();
 
-                ClampWindowToVirtualScreen();
+                EnsureWindowVisibleOnScreen();
                 QueueFullRelayout();
+
+                // Capture the final taskbar overlap after the position change has settled
+                Dispatcher.BeginInvoke(
+                    new Action(CaptureTaskbarOverlap),
+                    DispatcherPriority.ApplicationIdle);
             }
 
             var xInput = CreateNumericInput(
@@ -4668,7 +5074,7 @@ namespace KeyClickOverlay
         /// <summary>
         /// Creates the shared WPF-UI dialog layout with a title bar and content area.
         /// </summary>
-        private (Grid Root, WpfTitleBar TitleBar) CreateDialogRoot(FluentWindow dlg, UIElement content, Brush background, bool stretchContent = false)
+        private static (Grid Root, WpfTitleBar TitleBar) CreateDialogRoot(FluentWindow dlg, UIElement content, Brush background, bool stretchContent = false)
         {
             var titleBar = new WpfTitleBar
             {
@@ -4753,7 +5159,7 @@ namespace KeyClickOverlay
         /// <summary>
         /// Creates the shared icon-and-message content layout used by standard dialogs.
         /// </summary>
-        private Grid CreateDialogMessageContent(string message, DialogIcon icon, Brush background)
+        private static Grid CreateDialogMessageContent(string message, DialogIcon icon, Brush background)
         {
             var contentGrid = new Grid
             {
@@ -5335,10 +5741,10 @@ namespace KeyClickOverlay
                     try
                     {
                         var modeCombo = FindDescendant<ComboBox>(picker);
-                        if (modeCombo != null) modeCombo.MinWidth = 55;
+                        modeCombo?.MinWidth = 55;
 
                         var hexBox = FindDescendant<TextBox>(picker);
-                        if (hexBox != null) hexBox.MinWidth = 80;
+                        hexBox?.MinWidth = 80;
                     }
                     catch { /* template changes: ignore */ }
                 }
@@ -5555,8 +5961,7 @@ namespace KeyClickOverlay
 
             _previewFontKeysActive = true;
 
-            if (_stripBackground != null)
-                _stripBackground.Width = double.NaN;
+            _stripBackground?.Width = double.NaN;
 
             ApplyContentScaleToChildren();
             NormalizeInterItemSpacing();
@@ -6125,8 +6530,7 @@ namespace KeyClickOverlay
             // Preview row: let WPF size to content.
             if (_previewFontKeysActive)
             {
-                if (_stripBackground != null)
-                    _stripBackground.Width = double.NaN;
+                _stripBackground?.Width = double.NaN;
                 return;
             }
 

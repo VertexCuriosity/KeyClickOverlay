@@ -6,6 +6,15 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 <br>
 
+## [1.1.1] - 2026-08-28
+
+### Changed
+
+- window recorgition
+- all earlier presets save need to be overwritten
+
+<br>
+
 ## [1.1.0] - 2026-08-28
 
 ### Added
