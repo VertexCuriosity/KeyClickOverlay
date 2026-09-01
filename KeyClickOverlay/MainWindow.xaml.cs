@@ -1903,7 +1903,6 @@ namespace KeyClickOverlay
         /// <summary>Handle non-client hit-testing so the window can be resized/dragged.</summary>
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
-            if (msg == WM_EXITSIZEMOVE) CaptureTaskbarOverlap();
 
             // Handle our app-specific toggle message
             if (msg == WM_TOGGLE_CLICKTHROUGH)
@@ -4799,10 +4798,19 @@ namespace KeyClickOverlay
 
             void ApplySize(double width, double height)
             {
+                SizeChangedEventHandler? captureHandler = null;
+
+                captureHandler = (_, __) =>
+                {
+                    SizeChanged -= captureHandler;
+                    CaptureTaskbarOverlap();
+                };
+
+                SizeChanged += captureHandler;
+
                 Width = Math.Max(MinWidth, width);
                 Height = Math.Max(MinHeight, height);
 
-                EnsureWindowVisibleOnScreen();
                 QueueFullRelayout();
             }
 
@@ -4963,6 +4971,16 @@ namespace KeyClickOverlay
 
             void ApplyBottomLeft(double x, double y)
             {
+                EventHandler? captureHandler = null;
+
+                captureHandler = (_, __) =>
+                {
+                    LocationChanged -= captureHandler;
+                    CaptureTaskbarOverlap();
+                };
+
+                LocationChanged += captureHandler;
+
                 Left = x;
                 Top = y - ReadCurrentHeight();
 
