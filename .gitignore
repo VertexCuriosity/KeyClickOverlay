@@ -6,6 +6,8 @@ obj/
 # User-specific files
 *.user
 *.suo
+*.pubxml
+*.pubxml.user
 
 # Temporary and cache files
 *.tmp
