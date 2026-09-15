@@ -14,6 +14,14 @@ namespace KeyClickOverlay
         private const int WM_SYSCOMMAND = 0x0112;
         private const int SC_SIZE = 0xF000;
 
+        internal const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
+        internal const uint EVENT_OBJECT_REORDER = 0x8004;
+
+        internal const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+        internal const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
+
+        internal const uint GW_HWNDPREV = 3;
+
         // Virtual keys used by eyedropper helpers
         private const int VK_LBUTTON = 0x01;
         private const int VK_RBUTTON = 0x02;
@@ -33,6 +41,29 @@ namespace KeyClickOverlay
 
 
         // === User32: P/Invoke ===
+
+        internal delegate void WinEventDelegate(
+            nint hWinEventHook,
+            uint eventType,
+            nint hwnd,
+            int idObject,
+            int idChild,
+            uint idEventThread,
+            uint eventTime);
+
+        [DllImport("user32.dll")]
+        internal static extern nint SetWinEventHook(
+            uint eventMin,
+            uint eventMax,
+            nint hmodWinEventProc,
+            WinEventDelegate lpfnWinEventProc,
+            uint idProcess,
+            uint idThread,
+            uint dwFlags);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool UnhookWinEvent(nint hWinEventHook);
 
         /// <summary>Sends a message to a window (synchronous, Unicode).</summary>
         [LibraryImport("user32.dll", EntryPoint = "SendMessageW", SetLastError = true)]
@@ -61,6 +92,18 @@ namespace KeyClickOverlay
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static partial bool GetWindowRect(nint hWnd, out RECT lpRect);
+
+        [LibraryImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static partial nint GetWindow(
+            nint hWnd,
+            uint uCmd);
+
+        [LibraryImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool IsWindowVisible(
+            nint hWnd);
 
         /// <summary>Returns the monitor nearest to a physical screen point.</summary>
         [LibraryImport("user32.dll")]
@@ -183,6 +226,39 @@ namespace KeyClickOverlay
         internal static partial int SetWindowLong(nint hWnd, int nIndex, int dwNewLong);
 
         // === Z-Order / Topmost ===
+
+        private const string OverlayWindowProperty = "VertexCuriosity.OverlayWindow";
+
+        [LibraryImport("user32.dll", EntryPoint = "SetPropW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool SetProp(nint hWnd, string lpString, nint hData);
+
+        [LibraryImport("user32.dll", EntryPoint = "GetPropW", StringMarshalling = StringMarshalling.Utf16)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        private static partial nint GetProp(nint hWnd, string lpString);
+
+        [LibraryImport("user32.dll", EntryPoint = "RemovePropW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        private static partial nint RemoveProp(nint hWnd, string lpString);
+
+        /// <summary>Marks an HWND as a cooperating VertexCuriosity overlay.</summary>
+        internal static void MarkOverlayWindow(nint hwnd)
+        {
+            if (hwnd != 0)
+                _ = SetProp(hwnd, OverlayWindowProperty, 1);
+        }
+
+        /// <summary>Removes the cooperating-overlay marker from an HWND.</summary>
+        internal static void UnmarkOverlayWindow(nint hwnd)
+        {
+            if (hwnd != 0)
+                _ = RemoveProp(hwnd, OverlayWindowProperty);
+        }
+
+        /// <summary>Returns whether an HWND belongs to a cooperating VertexCuriosity overlay.</summary>
+        internal static bool IsOverlayWindow(nint hwnd) =>
+            hwnd != 0 && GetProp(hwnd, OverlayWindowProperty) != 0;
 
         [LibraryImport("user32.dll", SetLastError = false)]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

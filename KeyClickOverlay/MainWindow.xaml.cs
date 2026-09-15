@@ -94,7 +94,15 @@ namespace KeyClickOverlay
         private DateTime _lastContextMenuOpenUtc = DateTime.MinValue;
         private Window? _topmostTarget = null;                                      // null = main window; otherwise, a dialog to keep above
         private bool _suspendTopmostForMenu = false;                                // true while the context menu (or a submenu) is open
-        private readonly DispatcherTimer _topmostPulse = new();                     // heartbeat that re-asserts TopMost
+
+        private IntPtr _foregroundHook;
+        private IntPtr _reorderHook;
+        private NativeMethods.WinEventDelegate? _winEventDelegate;
+
+        private readonly DispatcherTimer _zOrderRepairTimer = new()
+        {
+            Interval = TimeSpan.FromMilliseconds(75)
+        };
 
         // --- DPI / preset geometry state ---
         private readonly DispatcherTimer _dpiSettleTimer = new() { Interval = TimeSpan.FromMilliseconds(150) }; // wait until DPI-related window changes settle
@@ -1585,8 +1593,20 @@ namespace KeyClickOverlay
                 // Enable Win32 resize logic (when using border)
                 HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(WndProc);
 
+                // Mark this as a cooperating VertexCuriosity overlay window
+                NativeMethods.MarkOverlayWindow(new WindowInteropHelper(this).Handle);
+
                 // Ensure we stay a normal app window (taskbar icon) even after any style changes
                 NativeMethods.EnsureAppWindow(this);
+
+                ReassertTopmost();
+                StartZOrderWatcher();
+            };
+
+            Closing += (_, _) =>
+            {
+                StopZOrderWatcher();
+                NativeMethods.UnmarkOverlayWindow(new WindowInteropHelper(this).Handle);
             };
 
             Activated += (_, __) => UpdateWindowBorderChrome();
@@ -1598,22 +1618,15 @@ namespace KeyClickOverlay
             UpdateWindowChromeTheme();      // Apply current Windows light/dark chrome
             SetupHooks();                   // Global input hooks (mouse + keyboard)
 
-            // Keep the current target (main window or dialog) above taskbar/other topmost windows.
-            Activated += (_, __) => this.ReassertTopmost();
-            Deactivated += (_, __) => this.ReassertTopmost();
-            LocationChanged += (_, __) => this.ReassertTopmost();
-            SizeChanged += (_, __) => this.ReassertTopmost();
-            StateChanged += (_, __) => this.ReassertTopmost();
-            IsVisibleChanged += (_, __) => this.ReassertTopmost();
-
             // Restart the DPI settle timer while WPF is still changing the window
             SizeChanged += (_, __) => { if (_pendingDpiCorrection != null) { _dpiSettleTimer.Stop(); _dpiSettleTimer.Start(); } };
             LocationChanged += (_, __) => { if (_pendingDpiCorrection != null) { _dpiSettleTimer.Stop(); _dpiSettleTimer.Start(); } };
 
-            // Light heartbeat to cover rare z-order steals (every 2 seconds)
-            _topmostPulse.Interval = TimeSpan.FromSeconds(2);
-            _topmostPulse.Tick += (_, __) => this.ReassertTopmost();
-            _topmostPulse.Start();
+            _zOrderRepairTimer.Tick += (_, _) =>
+            {
+                _zOrderRepairTimer.Stop();
+                RepairOverlayZOrder();
+            };
 
             // Apply the pending DPI correction once window changes have settled
             _dpiSettleTimer.Tick += (_, __) =>
@@ -1946,6 +1959,116 @@ namespace KeyClickOverlay
             // keep the chosen window above everything (taskbar/games-in-windowed) without stealing focus
             if (target.WindowState == WindowState.Minimized) return;
             NativeMethods.EnsureTopMost(target);
+        }
+
+        private void StartZOrderWatcher()
+        {
+            _winEventDelegate = OnWinEvent;
+
+            uint flags =
+                NativeMethods.WINEVENT_OUTOFCONTEXT |
+                NativeMethods.WINEVENT_SKIPOWNPROCESS;
+
+            _foregroundHook = NativeMethods.SetWinEventHook(
+                NativeMethods.EVENT_SYSTEM_FOREGROUND,
+                NativeMethods.EVENT_SYSTEM_FOREGROUND,
+                IntPtr.Zero,
+                _winEventDelegate,
+                0,
+                0,
+                flags);
+
+            _reorderHook = NativeMethods.SetWinEventHook(
+                NativeMethods.EVENT_OBJECT_REORDER,
+                NativeMethods.EVENT_OBJECT_REORDER,
+                IntPtr.Zero,
+                _winEventDelegate,
+                0,
+                0,
+                flags);
+        }
+
+        private void StopZOrderWatcher()
+        {
+            _zOrderRepairTimer.Stop();
+
+            if (_foregroundHook != IntPtr.Zero)
+            {
+                NativeMethods.UnhookWinEvent(_foregroundHook);
+                _foregroundHook = IntPtr.Zero;
+            }
+
+            if (_reorderHook != IntPtr.Zero)
+            {
+                NativeMethods.UnhookWinEvent(_reorderHook);
+                _reorderHook = IntPtr.Zero;
+            }
+
+            _winEventDelegate = null;
+        }
+
+        private void OnWinEvent(
+            IntPtr hWinEventHook,
+            uint eventType,
+            IntPtr hwnd,
+            int idObject,
+            int idChild,
+            uint idEventThread,
+            uint eventTime)
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                _zOrderRepairTimer.Stop();
+                _zOrderRepairTimer.Start();
+            });
+        }
+
+        private void RepairOverlayZOrder()
+        {
+            if (_suspendTopmostForMenu)
+                return;
+
+            var target = _topmostTarget ?? this;
+
+            if (target.WindowState == WindowState.Minimized ||
+                !target.IsVisible)
+                return;
+
+            var targetHwnd = new WindowInteropHelper(target).Handle;
+
+            if (targetHwnd == IntPtr.Zero ||
+                !NativeMethods.GetWindowRect(targetHwnd, out var targetRect))
+                return;
+
+            var windowAbove = NativeMethods.GetWindow(
+                targetHwnd,
+                NativeMethods.GW_HWNDPREV);
+
+            while (windowAbove != IntPtr.Zero)
+            {
+                if (!NativeMethods.IsOverlayWindow(windowAbove) &&
+                    NativeMethods.IsWindowVisible(windowAbove) &&
+                    NativeMethods.GetWindowRect(windowAbove, out var otherRect) &&
+                    RectanglesOverlap(targetRect, otherRect))
+                {
+                    ReassertTopmost();
+                    return;
+                }
+
+                windowAbove = NativeMethods.GetWindow(
+                    windowAbove,
+                    NativeMethods.GW_HWNDPREV);
+            }
+        }
+
+        private static bool RectanglesOverlap(
+            NativeMethods.RECT a,
+            NativeMethods.RECT b)
+        {
+            return a.Left < b.Right &&
+                   a.Right > b.Left &&
+                   a.Top < b.Bottom &&
+                   a.Bottom > b.Top;
         }
 
         /// <summary>Build the overlay’s visual tree, auto-sizing rounded background, and the right-click context menu.</summary>
@@ -7307,7 +7430,7 @@ namespace KeyClickOverlay
         }
 
         /// <summary>
-        /// Suspends the topmost heartbeat while PixiEditor's mode dropdown is open
+        /// Suspends topmost handling while PixiEditor's mode dropdown is open
         /// so its separate popup window is not disturbed by z-order reassertion.
         /// </summary>
         private void AttachPixiComboBoxTopmostGuard(StandardColorPicker picker)
@@ -8916,8 +9039,6 @@ namespace KeyClickOverlay
             // Make sure style flips didn’t remove our taskbar icon
             NativeMethods.EnsureAppWindow(this);
 
-            // Stay assertive on top while transparent mode is active
-            _topmostPulse.Interval = TimeSpan.FromMilliseconds(_transparentToMouse ? 750 : 2000);
             ReassertTopmost(); // once immediately after toggling
 
             IsHitTestVisible = !_transparentToMouse;
