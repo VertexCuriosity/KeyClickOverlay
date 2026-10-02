@@ -6,6 +6,19 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 <br>
 
+## [1.1.2] - 2026-10-02
+
+### Changed
+
+- Improved overlay Z-ordering to keep the overlay reliably on top.
+- Improved mouse overlay efficiency by avoiding unnecessary SVG processing.
+
+### Fixed
+
+- Fixed mouse overlay updates during high-frequency touchpad scrolling.
+
+<br>
+
 ## [1.1.1] - 2026-09-01
 
 ### Changed
