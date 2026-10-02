@@ -156,6 +156,7 @@ namespace KeyClickOverlay
         private IKeyboardMouseEvents? globalHook;
         private string _currentMouseImage = "mouse_idle.svg";
         private string? _lastMouseTintPath;
+        private Color? _lastRenderedMouseColor;
         private readonly Dictionary<string, (FrameworkElement element, ScaleTransform scale, DateTime? deadlineUtc)> _activeKeyBoxes = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<Keys> _downKeys = [];
         private readonly Dictionary<string, DateTime> _pendingRegularUps = new(StringComparer.OrdinalIgnoreCase);
@@ -9094,23 +9095,24 @@ namespace KeyClickOverlay
         {
             if (!_mouseEnabled) return;
 
-            string srcPath = IOPath.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "svg", filename);
-            if (!File.Exists(srcPath)) return;
-
-            // Build/lookup the tinted copy for the *current* color first
-            string tintedPath = EnsureMouseSvgWithColor(srcPath, _mouseColorRgb);
-
-            // Only skip if BOTH the image AND the tinted path are identical to what already is shown
+            // Fast path: nothing changed, so avoid all path/cache/file-system work.
             if (_mouseInitialized &&
                 _currentMouseImage == filename &&
-                string.Equals(_lastMouseTintPath, tintedPath, StringComparison.OrdinalIgnoreCase))
+                _lastRenderedMouseColor == _mouseColorRgb)
             {
                 return;
             }
 
+            string srcPath = IOPath.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "svg", filename);
+            if (!File.Exists(srcPath)) return;
+
+            // Build/lookup the tinted copy for the current mouse color.
+            string tintedPath = EnsureMouseSvgWithColor(srcPath, _mouseColorRgb);
+
             _currentMouseImage = filename;
             _mouseInitialized = true;
             _lastMouseTintPath = tintedPath;
+            _lastRenderedMouseColor = _mouseColorRgb;
 
             if (File.Exists(tintedPath))
             {
