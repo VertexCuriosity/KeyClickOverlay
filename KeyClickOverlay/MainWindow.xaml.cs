@@ -1889,7 +1889,7 @@ namespace KeyClickOverlay
         private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
 
 
-        // === Temporary Precision Touchpad Raw Input diagnostic ===
+        // === Precision Touchpad Raw Input ===
 
         private const int WM_INPUT = 0x00FF;
         private const uint RIDEV_INPUTSINK = 0x00000100;
@@ -1921,154 +1921,6 @@ namespace KeyClickOverlay
             IntPtr preparsedData,
             IntPtr report,
             uint reportLength);
-
-        [System.Runtime.InteropServices.StructLayout(
-            System.Runtime.InteropServices.LayoutKind.Sequential)]
-        private struct HIDP_CAPS
-        {
-            public ushort Usage;
-            public ushort UsagePage;
-            public ushort InputReportByteLength;
-            public ushort OutputReportByteLength;
-            public ushort FeatureReportByteLength;
-
-            [System.Runtime.InteropServices.MarshalAs(
-                System.Runtime.InteropServices.UnmanagedType.ByValArray,
-                SizeConst = 17)]
-            public ushort[] Reserved;
-
-            public ushort NumberLinkCollectionNodes;
-            public ushort NumberInputButtonCaps;
-            public ushort NumberInputValueCaps;
-            public ushort NumberInputDataIndices;
-            public ushort NumberOutputButtonCaps;
-            public ushort NumberOutputValueCaps;
-            public ushort NumberOutputDataIndices;
-            public ushort NumberFeatureButtonCaps;
-            public ushort NumberFeatureValueCaps;
-            public ushort NumberFeatureDataIndices;
-        }
-
-        [System.Runtime.InteropServices.StructLayout(
-            System.Runtime.InteropServices.LayoutKind.Explicit,
-            Size = 72)]
-        private struct HIDP_VALUE_CAPS
-        {
-            [System.Runtime.InteropServices.FieldOffset(0)]
-            public ushort UsagePage;
-
-            [System.Runtime.InteropServices.FieldOffset(2)]
-            public byte ReportID;
-
-            [System.Runtime.InteropServices.FieldOffset(3)]
-            public byte IsAlias;
-
-            [System.Runtime.InteropServices.FieldOffset(4)]
-            public ushort BitField;
-
-            [System.Runtime.InteropServices.FieldOffset(6)]
-            public ushort LinkCollection;
-
-            [System.Runtime.InteropServices.FieldOffset(8)]
-            public ushort LinkUsage;
-
-            [System.Runtime.InteropServices.FieldOffset(10)]
-            public ushort LinkUsagePage;
-
-            [System.Runtime.InteropServices.FieldOffset(12)]
-            public byte IsRange;
-
-            [System.Runtime.InteropServices.FieldOffset(13)]
-            public byte IsStringRange;
-
-            [System.Runtime.InteropServices.FieldOffset(14)]
-            public byte IsDesignatorRange;
-
-            [System.Runtime.InteropServices.FieldOffset(15)]
-            public byte IsAbsolute;
-
-            [System.Runtime.InteropServices.FieldOffset(16)]
-            public byte HasNull;
-
-            [System.Runtime.InteropServices.FieldOffset(17)]
-            public byte Reserved;
-
-            [System.Runtime.InteropServices.FieldOffset(18)]
-            public ushort BitSize;
-
-            [System.Runtime.InteropServices.FieldOffset(20)]
-            public ushort ReportCount;
-
-            [System.Runtime.InteropServices.FieldOffset(22)]
-            public ushort Reserved2_0;
-
-            [System.Runtime.InteropServices.FieldOffset(24)]
-            public ushort Reserved2_1;
-
-            [System.Runtime.InteropServices.FieldOffset(26)]
-            public ushort Reserved2_2;
-
-            [System.Runtime.InteropServices.FieldOffset(28)]
-            public ushort Reserved2_3;
-
-            [System.Runtime.InteropServices.FieldOffset(30)]
-            public ushort Reserved2_4;
-
-            [System.Runtime.InteropServices.FieldOffset(32)]
-            public uint UnitsExp;
-
-            [System.Runtime.InteropServices.FieldOffset(36)]
-            public uint Units;
-
-            [System.Runtime.InteropServices.FieldOffset(40)]
-            public int LogicalMin;
-
-            [System.Runtime.InteropServices.FieldOffset(44)]
-            public int LogicalMax;
-
-            [System.Runtime.InteropServices.FieldOffset(48)]
-            public int PhysicalMin;
-
-            [System.Runtime.InteropServices.FieldOffset(52)]
-            public int PhysicalMax;
-
-            // HIDP_VALUE_CAPS ends with a 16-byte Range/NotRange union.
-            [System.Runtime.InteropServices.FieldOffset(56)]
-            public ushort Usage;
-
-            [System.Runtime.InteropServices.FieldOffset(58)]
-            public ushort UsageMax;
-
-            [System.Runtime.InteropServices.FieldOffset(60)]
-            public ushort StringIndex;
-
-            [System.Runtime.InteropServices.FieldOffset(62)]
-            public ushort StringMax;
-
-            [System.Runtime.InteropServices.FieldOffset(64)]
-            public ushort DesignatorIndex;
-
-            [System.Runtime.InteropServices.FieldOffset(66)]
-            public ushort DesignatorMax;
-
-            [System.Runtime.InteropServices.FieldOffset(68)]
-            public ushort DataIndex;
-
-            [System.Runtime.InteropServices.FieldOffset(70)]
-            public ushort DataIndexMax;
-        }
-
-        [System.Runtime.InteropServices.DllImport("hid.dll")]
-        private static extern int HidP_GetCaps(
-            IntPtr preparsedData,
-            out HIDP_CAPS capabilities);
-
-        [System.Runtime.InteropServices.DllImport("hid.dll")]
-        private static extern int HidP_GetValueCaps(
-            int reportType,
-            [System.Runtime.InteropServices.Out] HIDP_VALUE_CAPS[] valueCaps,
-            ref ushort valueCapsLength,
-            IntPtr preparsedData);
 
         [System.Runtime.InteropServices.StructLayout(
             System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -2124,107 +1976,13 @@ namespace KeyClickOverlay
                 }
             };
 
-            bool success = RegisterRawInputDevices(
+            RegisterRawInputDevices(
                 devices,
                 (uint)devices.Length,
                 (uint)System.Runtime.InteropServices.Marshal.SizeOf<RAWINPUTDEVICE>());
-
-            System.Diagnostics.Debug.WriteLine(
-                $"TOUCHPAD RAW INPUT REGISTERED: {success}, Error={System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
         }
 
-        private static void DumpTouchpadValueCaps(IntPtr hDevice)
-        {
-            uint preparsedSize = 0;
-
-            uint result = GetRawInputDeviceInfo(
-                hDevice,
-                RIDI_PREPARSEDDATA,
-                IntPtr.Zero,
-                ref preparsedSize);
-
-            if (result == uint.MaxValue || preparsedSize == 0)
-                return;
-
-            IntPtr preparsedData =
-                System.Runtime.InteropServices.Marshal.AllocHGlobal((int)preparsedSize);
-
-            try
-            {
-                result = GetRawInputDeviceInfo(
-                    hDevice,
-                    RIDI_PREPARSEDDATA,
-                    preparsedData,
-                    ref preparsedSize);
-
-                if (result == uint.MaxValue)
-                    return;
-
-                int status = HidP_GetCaps(
-                    preparsedData,
-                    out HIDP_CAPS caps);
-
-                if (status != HIDP_STATUS_SUCCESS)
-                {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"HidP_GetCaps failed: 0x{status:X8}");
-                    return;
-                }
-
-                System.Diagnostics.Debug.WriteLine(
-                    $"TOUCHPAD VALUE CAPS: {caps.NumberInputValueCaps}");
-
-                ushort count = caps.NumberInputValueCaps;
-
-                if (count == 0)
-                    return;
-
-                var valueCaps = new HIDP_VALUE_CAPS[count];
-
-                status = HidP_GetValueCaps(
-                    HIDP_INPUT,
-                    valueCaps,
-                    ref count,
-                    preparsedData);
-
-                if (status != HIDP_STATUS_SUCCESS)
-                {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"HidP_GetValueCaps failed: 0x{status:X8}");
-                    return;
-                }
-
-                for (int i = 0; i < count; i++)
-                {
-                    HIDP_VALUE_CAPS cap = valueCaps[i];
-
-                    // Only print fields relevant to our touchpad investigation.
-                    bool interesting =
-                        (cap.UsagePage == 0x0D &&
-                            (cap.Usage == 0x51 || cap.Usage == 0x54)) ||
-                        (cap.UsagePage == 0x01 &&
-                            (cap.Usage == 0x30 || cap.Usage == 0x31));
-
-                    if (!interesting)
-                        continue;
-
-                    System.Diagnostics.Debug.WriteLine(
-                        $"CAP: Page=0x{cap.UsagePage:X2}, " +
-                        $"Usage=0x{cap.Usage:X2}, " +
-                        $"Link={cap.LinkCollection}, " +
-                        $"ReportID=0x{cap.ReportID:X2}, " +
-                        $"BitSize={cap.BitSize}, " +
-                        $"Count={cap.ReportCount}, " +
-                        $"Range={cap.IsRange}");
-                }
-            }
-            finally
-            {
-                System.Runtime.InteropServices.Marshal.FreeHGlobal(preparsedData);
-            }
-        }
-
-        private void DumpTouchpadContactCount(
+        private void ProcessTouchpadReport(
             IntPtr hDevice,
             IntPtr reportPtr,
             uint reportSize)
@@ -2268,9 +2026,6 @@ namespace KeyClickOverlay
                 if (status != HIDP_STATUS_SUCCESS)
                     return;
 
-                System.Diagnostics.Debug.WriteLine(
-                    $"CONTACTS: {contactCount}");
-
                 if (contactCount != 2)
                 {
                     _previousTouchpadY1 = null;
@@ -2278,12 +2033,10 @@ namespace KeyClickOverlay
                     return;
                 }
 
-                if (!TryGetTouchpadContact(
-                        1, preparsedData, reportPtr, reportSize,
-                        out _, out _, out uint y1) ||
-                    !TryGetTouchpadContact(
-                        2, preparsedData, reportPtr, reportSize,
-                        out _, out _, out uint y2))
+                if (!TryGetTouchpadY(
+                        1, preparsedData, reportPtr, reportSize, out uint y1) ||
+                    !TryGetTouchpadY(
+                        2, preparsedData, reportPtr, reportSize, out uint y2))
                 {
                     _previousTouchpadY1 = null;
                     _previousTouchpadY2 = null;
@@ -2324,54 +2077,30 @@ namespace KeyClickOverlay
             }
         }
 
-        private static bool TryGetTouchpadContact(
+        private static bool TryGetTouchpadY(
             ushort linkCollection,
             IntPtr preparsedData,
             IntPtr reportPtr,
             uint reportSize,
-            out uint contactId,
-            out uint x,
             out uint y)
         {
-            int idStatus = HidP_GetUsageValue(
+            int status = HidP_GetUsageValue(
                 HIDP_INPUT,
-                0x0D,
+                0x01,       // Generic Desktop
                 linkCollection,
-                0x51,
-                out contactId,
-                preparsedData,
-                reportPtr,
-                reportSize);
-
-            int xStatus = HidP_GetUsageValue(
-                HIDP_INPUT,
-                0x01,
-                linkCollection,
-                0x30,
-                out x,
-                preparsedData,
-                reportPtr,
-                reportSize);
-
-            int yStatus = HidP_GetUsageValue(
-                HIDP_INPUT,
-                0x01,
-                linkCollection,
-                0x31,
+                0x31,       // Y
                 out y,
                 preparsedData,
                 reportPtr,
                 reportSize);
 
-            return idStatus == HIDP_STATUS_SUCCESS &&
-                   xStatus == HIDP_STATUS_SUCCESS &&
-                   yStatus == HIDP_STATUS_SUCCESS;
+            return status == HIDP_STATUS_SUCCESS;
         }
 
         private static uint? _previousTouchpadY1;
         private static uint? _previousTouchpadY2;
 
-        private void DumpTouchpadRawInput(IntPtr hRawInput)
+        private void ProcessTouchpadRawInput(IntPtr hRawInput)
         {
             uint size = 0;
             uint headerSize =
@@ -2386,11 +2115,7 @@ namespace KeyClickOverlay
                 headerSize);
 
             if (result == uint.MaxValue || size == 0)
-            {
-                System.Diagnostics.Debug.WriteLine(
-                    $"TOUCHPAD RAW INPUT: failed to get size, Error={System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
                 return;
-            }
 
             IntPtr buffer = System.Runtime.InteropServices.Marshal.AllocHGlobal((int)size);
 
@@ -2404,11 +2129,7 @@ namespace KeyClickOverlay
                     headerSize);
 
                 if (bytesRead == uint.MaxValue)
-                {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"TOUCHPAD RAW INPUT: read failed, Error={System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
                     return;
-                }
 
                 var header =
                     System.Runtime.InteropServices.Marshal.PtrToStructure<RAWINPUTHEADER>(buffer);
@@ -2434,7 +2155,7 @@ namespace KeyClickOverlay
                 {
                     int offset = dataOffset + (int)(report * reportSize);
 
-                    DumpTouchpadContactCount(
+                    ProcessTouchpadReport(
                         header.hDevice,
                         IntPtr.Add(buffer, offset),
                         reportSize);
@@ -2463,7 +2184,7 @@ namespace KeyClickOverlay
 
             if (msg == WM_INPUT)
             {
-                DumpTouchpadRawInput(lParam);
+                ProcessTouchpadRawInput(lParam);
             }
 
             // Handle our app-specific toggle message
@@ -9186,9 +8907,6 @@ namespace KeyClickOverlay
         /// <summary>Show scroll state/icon briefly, then revert to idle.</summary>
         private void GlobalHook_MouseWheel(object? _, System.Windows.Forms.MouseEventArgs e)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"GLOBAL WHEEL: Delta={e.Delta}");
-
             if (!_mouseEnabled || _overlayPaused)
             {
                 return;
