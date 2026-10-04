@@ -6,6 +6,20 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 <br>
 
+## [1.1.3] - 2026-10-04
+
+### Changed
+
+- Improved taskbar thumbnail controls with clearer icons and dynamic Pause/Resume and Transparent Mode states.
+- Improved the shortcut change dialog with a clearer shortcut capture interface and explicit Save and Cancel actions.
+- Aligned the shortcut menu order with the taskbar controls for consistency.
+
+### Fixed
+
+- Fully fixed mouse overlay updates during high-frequency touchpad scrolling, which were not completely resolved by the fix in v1.1.2.
+
+<br>
+
 ## [1.1.2] - 2026-10-02
 
 ### Changed
