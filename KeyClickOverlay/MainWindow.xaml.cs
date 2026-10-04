@@ -3551,8 +3551,8 @@ namespace KeyClickOverlay
             customizeShortcutsMenu.Items.Add(changeHotkeyItem);
             customizeShortcutsMenu.Items.Add(changePresetSwitchHotkeyItem);
             customizeShortcutsMenu.Items.Add(changePresetSwitchToggleHotkeyItem);
-            customizeShortcutsMenu.Items.Add(changeClearOverlayHotkeyItem);
             customizeShortcutsMenu.Items.Add(changePauseOverlayHotkeyItem);
+            customizeShortcutsMenu.Items.Add(changeClearOverlayHotkeyItem);
 
             // Top-level master mouse toggle (goes above "Toggle Background")
             var toggleMouseItem = new MenuItem
