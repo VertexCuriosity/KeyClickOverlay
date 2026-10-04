@@ -36,29 +36,18 @@
 		<PackageReference Include="WPF-UI" Version="4.3.0" />
 	</ItemGroup>
 
-	<!-- Generates the strongly-typed AppResources.Designer.cs from AppResources.resx (used for MouseIcon in taskbar thumbnail button). -->
 	<ItemGroup>
-		<Compile Update="AppResources.Designer.cs">
+		<Compile Update="Properties\Resources.Designer.cs">
 			<DesignTime>True</DesignTime>
 			<AutoGen>True</AutoGen>
-			<DependentUpon>AppResources.resx</DependentUpon>
-		</Compile>
-		<Compile Update="Properties\Resources.Designer.cs">
-		  <DesignTime>True</DesignTime>
-		  <AutoGen>True</AutoGen>
-		  <DependentUpon>Resources.resx</DependentUpon>
+			<DependentUpon>Resources.resx</DependentUpon>
 		</Compile>
 	</ItemGroup>
 
-	<!-- Embeds AppResources.resx into the assembly and runs the ResXFileCodeGenerator so AppResources.MouseIcon (System.Drawing.Icon) is available at runtime. -->
 	<ItemGroup>
-		<EmbeddedResource Update="AppResources.resx">
-			<Generator>ResXFileCodeGenerator</Generator>
-			<LastGenOutput>AppResources.Designer.cs</LastGenOutput>
-		</EmbeddedResource>
 		<EmbeddedResource Update="Properties\Resources.resx">
-		  <Generator>ResXFileCodeGenerator</Generator>
-		  <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+			<Generator>ResXFileCodeGenerator</Generator>
+			<LastGenOutput>Resources.Designer.cs</LastGenOutput>
 		</EmbeddedResource>
 	</ItemGroup>
 
