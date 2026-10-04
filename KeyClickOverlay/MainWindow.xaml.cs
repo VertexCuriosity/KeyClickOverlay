@@ -8686,12 +8686,19 @@ namespace KeyClickOverlay
         /// Generic shortcut picker dialog used by all configurable shortcuts.
         /// Requires at least one modifier key to reduce accidental global shortcut conflicts.
         /// </summary>
-        private void ChangeShortcutViaDialog(string titleText, string currentShortcutLabel, Action<Keys, ModifierKeys> applyShortcut, Action? afterSave = null)
+        private void ChangeShortcutViaDialog(
+            string titleText,
+            string currentShortcutLabel,
+            Action<Keys, ModifierKeys> applyShortcut,
+            Action? afterSave = null)
         {
             // ---------- Dialog surface ----------
             SolidColorBrush CreateFallbackSurface()
             {
-                var brush = new SolidColorBrush(AppTheme.IsDark ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249));
+                var brush = new SolidColorBrush(
+                    AppTheme.IsDark
+                        ? Color.FromRgb(43, 43, 43)
+                        : Color.FromRgb(249, 249, 249));
 
                 if (brush.CanFreeze)
                     brush.Freeze();
@@ -8702,7 +8709,10 @@ namespace KeyClickOverlay
             var fallbackSurface = CreateFallbackSurface();
 
             // ---------- WPF-UI dialog window ----------
-            var dlg = CreateDialogWindow(titleText, fallbackSurface, centerOnScreen: true);
+            var dlg = CreateDialogWindow(
+                titleText,
+                fallbackSurface,
+                centerOnScreen: true);
 
             dlg.Width = 440;
             dlg.MinWidth = 440;
@@ -8712,54 +8722,141 @@ namespace KeyClickOverlay
             dlg.SizeToContent = SizeToContent.Height;
 
             // ---------- Content ----------
-            var contentGrid = new Grid
+            var content = new StackPanel
             {
                 Background = fallbackSurface,
-                Margin = new Thickness(20, 18, 20, 28)
+                Margin = new Thickness(20, 18, 20, 16)
             };
-
-            contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-            var icon = BuildDialogIcon(DialogIcon.Info);
-            Grid.SetColumn(icon, 0);
-            contentGrid.Children.Add(icon);
 
             var messageGrid = new Grid
             {
-                Margin = new Thickness(16, 2, 0, 0)
+                Margin = new Thickness(0, 0, 0, 20)
             };
 
-            messageGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            messageGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            messageGrid.ColumnDefinitions.Add(
+                new ColumnDefinition { Width = GridLength.Auto });
 
-            var body = new TextBlock
+            messageGrid.ColumnDefinitions.Add(
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var icon = BuildDialogIcon(DialogIcon.Info);
+            icon.Margin = new Thickness(0, 2, 18, 0);
+
+            Grid.SetColumn(icon, 0);
+            messageGrid.Children.Add(icon);
+
+            var instructions = new TextBlock
             {
-                Text = "Press your new shortcut (e.g. Ctrl+Alt+R or Shift+S).\n" +
-                       "Use at least one of Ctrl, Shift or Alt.\n" +
-                       "Press Esc to cancel.",
+                Text = "Press a modifier key (Ctrl/Alt/Shift) plus another key, then click Save.",
                 TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 340
+                MaxWidth = 340,
+                VerticalAlignment = VerticalAlignment.Center
             };
 
-            var current = new TextBlock
+            BindDynamicResource(
+                instructions,
+                TextBlock.ForegroundProperty,
+                "TextFillColorPrimaryBrush",
+                "SystemControlForegroundBaseHighBrush");
+
+            Grid.SetColumn(instructions, 1);
+            messageGrid.Children.Add(instructions);
+
+            content.Children.Add(messageGrid);
+
+            var captureLabel = new TextBlock
             {
-                Text = "Current shortcut: " + currentShortcutLabel,
+                Text = currentShortcutLabel,
+                FontSize = 28,
                 FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 12, 0, 0)
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 24)
             };
 
-            Grid.SetRow(body, 0);
-            Grid.SetRow(current, 1);
+            BindDynamicResource(
+                captureLabel,
+                TextBlock.ForegroundProperty,
+                "TextFillColorPrimaryBrush",
+                "SystemControlForegroundBaseHighBrush");
 
-            messageGrid.Children.Add(body);
-            messageGrid.Children.Add(current);
+            content.Children.Add(captureLabel);
 
-            Grid.SetColumn(messageGrid, 1);
-            contentGrid.Children.Add(messageGrid);
+            // ---------- Buttons ----------
+            var buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+
+            var saveButton = new Button
+            {
+                Content = "Save",
+                MinWidth = 88,
+                Height = 34,
+                Margin = new Thickness(0, 0, 8, 0),
+                IsDefault = true
+            };
+
+            var cancelButton = new Button
+            {
+                Content = "Cancel",
+                MinWidth = 88,
+                Height = 34,
+                IsCancel = true
+            };
+
+            buttons.Children.Add(saveButton);
+            buttons.Children.Add(cancelButton);
+            content.Children.Add(buttons);
 
             // ---------- Shared WPF-UI shell ----------
-            var (dialogRoot, titleBar) = CreateDialogRoot(dlg, contentGrid, fallbackSurface);
+            var (dialogRoot, titleBar) =
+                CreateDialogRoot(dlg, content, fallbackSurface);
+
+            // ---------- Shortcut capture ----------
+            ModifierKeys capturedMods = ModifierKeys.None;
+            Keys capturedKey = Keys.None;
+            bool hasValidCapture = true;
+
+            dlg.PreviewKeyDown += (_, e) =>
+            {
+                var key = e.Key == Key.System ? e.SystemKey : e.Key;
+
+                // Ignore modifier presses until another key is pressed with them.
+                if (key is Key.LeftCtrl or Key.RightCtrl or
+                    Key.LeftShift or Key.RightShift or
+                    Key.LeftAlt or Key.RightAlt or
+                    Key.LWin or Key.RWin)
+                {
+                    return;
+                }
+
+                ModifierKeys mods =
+                    Keyboard.Modifiers &
+                    (ModifierKeys.Control |
+                     ModifierKeys.Shift |
+                     ModifierKeys.Alt);
+
+                if (mods == ModifierKeys.None)
+                {
+                    hasValidCapture = false;
+                    saveButton.IsEnabled = false;
+                    captureLabel.Text = "Hold at least one modifier";
+                    e.Handled = true;
+                    return;
+                }
+
+                capturedMods = mods;
+                capturedKey = (Keys)KeyInterop.VirtualKeyFromKey(key);
+
+                hasValidCapture = true;
+                saveButton.IsEnabled = true;
+
+                captureLabel.Text =
+                    FormatShortcutLabel(capturedMods, capturedKey);
+
+                e.Handled = true;
+            };
 
             // ---------- Theme switching ----------
             void OnThemeChanged(object? sender, EventArgs e)
@@ -8767,13 +8864,12 @@ namespace KeyClickOverlay
                 var surface = CreateFallbackSurface();
 
                 ApplyWpfUiDialogTheme(dlg);
-
                 NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, AppTheme.IsDark);
 
                 dlg.Background = surface;
                 dialogRoot.Background = surface;
                 titleBar.Background = surface;
-                contentGrid.Background = surface;
+                content.Background = surface;
             }
 
             AppTheme.Changed += OnThemeChanged;
@@ -8783,47 +8879,24 @@ namespace KeyClickOverlay
                 AppTheme.Changed -= OnThemeChanged;
             };
 
-            // ---------- Shortcut capture ----------
-            Keys pickedKey = Keys.None;
-            ModifierKeys pickedMods = ModifierKeys.None;
+            // ---------- Result ----------
+            bool save = false;
 
-            dlg.PreviewKeyDown += (_, e) =>
+            saveButton.Click += (_, _) =>
             {
-                if (e.Key == Key.Escape)
-                {
-                    e.Handled = true;
-                    dlg.Close();
+                if (!hasValidCapture || capturedKey == Keys.None)
                     return;
-                }
 
-                Key key = e.Key == Key.System ? e.SystemKey : e.Key;
-
-                if (key is Key.LeftCtrl or Key.RightCtrl or
-                    Key.LeftShift or Key.RightShift or
-                    Key.LeftAlt or Key.RightAlt or
-                    Key.LWin or Key.RWin)
-                {
-                    e.Handled = true;
-                    return;
-                }
-
-                ModifierKeys mods =
-                    Keyboard.Modifiers &
-                    (ModifierKeys.Control | ModifierKeys.Shift | ModifierKeys.Alt);
-
-                if (mods == ModifierKeys.None)
-                {
-                    e.Handled = true;
-                    return;
-                }
-
-                pickedKey = (Keys)KeyInterop.VirtualKeyFromKey(key);
-                pickedMods = mods;
-
-                e.Handled = true;
-                dlg.DialogResult = true;
+                save = true;
                 dlg.Close();
             };
+
+            cancelButton.Click += (_, _) =>
+            {
+                dlg.Close();
+            };
+
+            dlg.Loaded += (_, _) => saveButton.Focus();
 
             // ---------- Topmost handling ----------
             _topmostTarget = dlg;
@@ -8843,11 +8916,11 @@ namespace KeyClickOverlay
 
             ReassertTopmost();
 
-            // ---------- Save shortcut ----------
-            if (pickedKey == Keys.None || pickedMods == ModifierKeys.None)
+            if (!save)
                 return;
 
-            applyShortcut(pickedKey, pickedMods);
+            // ---------- Apply shortcut ----------
+            applyShortcut(capturedKey, capturedMods);
             SavePrefs();
             afterSave?.Invoke();
         }
