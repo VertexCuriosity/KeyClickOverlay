@@ -1591,11 +1591,16 @@ namespace KeyClickOverlay
 
             SourceInitialized += (_, _) =>
             {
+                var hwnd = new WindowInteropHelper(this).Handle;
+
                 // Enable Win32 resize logic (when using border)
-                HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(WndProc);
+                HwndSource.FromHwnd(hwnd)?.AddHook(WndProc);
+
+                // TEMP: listen for Precision Touchpad Raw Input even while KCO is in the background
+                RegisterTouchpadRawInput(hwnd);
 
                 // Mark this as a cooperating VertexCuriosity overlay window
-                NativeMethods.MarkOverlayWindow(new WindowInteropHelper(this).Handle);
+                NativeMethods.MarkOverlayWindow(hwnd);
 
                 // Ensure we stay a normal app window (taskbar icon) even after any style changes
                 NativeMethods.EnsureAppWindow(this);
@@ -1884,6 +1889,562 @@ namespace KeyClickOverlay
         private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
 
 
+        // === Temporary Precision Touchpad Raw Input diagnostic ===
+
+        private const int WM_INPUT = 0x00FF;
+        private const uint RIDEV_INPUTSINK = 0x00000100;
+
+        private const uint RID_INPUT = 0x10000003;
+        private const uint RIM_TYPEHID = 2;
+
+        private const uint RIDI_PREPARSEDDATA = 0x20000005;
+        private const int HIDP_INPUT = 0;
+        private const int HIDP_STATUS_SUCCESS = 0x00110000;
+
+        [System.Runtime.InteropServices.DllImport(
+            "user32.dll",
+            SetLastError = true)]
+        private static extern uint GetRawInputDeviceInfo(
+            IntPtr hDevice,
+            uint uiCommand,
+            IntPtr pData,
+            ref uint pcbSize);
+
+        [System.Runtime.InteropServices.DllImport(
+            "hid.dll")]
+        private static extern int HidP_GetUsageValue(
+            int reportType,
+            ushort usagePage,
+            ushort linkCollection,
+            ushort usage,
+            out uint usageValue,
+            IntPtr preparsedData,
+            IntPtr report,
+            uint reportLength);
+
+        [System.Runtime.InteropServices.StructLayout(
+            System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct HIDP_CAPS
+        {
+            public ushort Usage;
+            public ushort UsagePage;
+            public ushort InputReportByteLength;
+            public ushort OutputReportByteLength;
+            public ushort FeatureReportByteLength;
+
+            [System.Runtime.InteropServices.MarshalAs(
+                System.Runtime.InteropServices.UnmanagedType.ByValArray,
+                SizeConst = 17)]
+            public ushort[] Reserved;
+
+            public ushort NumberLinkCollectionNodes;
+            public ushort NumberInputButtonCaps;
+            public ushort NumberInputValueCaps;
+            public ushort NumberInputDataIndices;
+            public ushort NumberOutputButtonCaps;
+            public ushort NumberOutputValueCaps;
+            public ushort NumberOutputDataIndices;
+            public ushort NumberFeatureButtonCaps;
+            public ushort NumberFeatureValueCaps;
+            public ushort NumberFeatureDataIndices;
+        }
+
+        [System.Runtime.InteropServices.StructLayout(
+            System.Runtime.InteropServices.LayoutKind.Explicit,
+            Size = 72)]
+        private struct HIDP_VALUE_CAPS
+        {
+            [System.Runtime.InteropServices.FieldOffset(0)]
+            public ushort UsagePage;
+
+            [System.Runtime.InteropServices.FieldOffset(2)]
+            public byte ReportID;
+
+            [System.Runtime.InteropServices.FieldOffset(3)]
+            public byte IsAlias;
+
+            [System.Runtime.InteropServices.FieldOffset(4)]
+            public ushort BitField;
+
+            [System.Runtime.InteropServices.FieldOffset(6)]
+            public ushort LinkCollection;
+
+            [System.Runtime.InteropServices.FieldOffset(8)]
+            public ushort LinkUsage;
+
+            [System.Runtime.InteropServices.FieldOffset(10)]
+            public ushort LinkUsagePage;
+
+            [System.Runtime.InteropServices.FieldOffset(12)]
+            public byte IsRange;
+
+            [System.Runtime.InteropServices.FieldOffset(13)]
+            public byte IsStringRange;
+
+            [System.Runtime.InteropServices.FieldOffset(14)]
+            public byte IsDesignatorRange;
+
+            [System.Runtime.InteropServices.FieldOffset(15)]
+            public byte IsAbsolute;
+
+            [System.Runtime.InteropServices.FieldOffset(16)]
+            public byte HasNull;
+
+            [System.Runtime.InteropServices.FieldOffset(17)]
+            public byte Reserved;
+
+            [System.Runtime.InteropServices.FieldOffset(18)]
+            public ushort BitSize;
+
+            [System.Runtime.InteropServices.FieldOffset(20)]
+            public ushort ReportCount;
+
+            [System.Runtime.InteropServices.FieldOffset(22)]
+            public ushort Reserved2_0;
+
+            [System.Runtime.InteropServices.FieldOffset(24)]
+            public ushort Reserved2_1;
+
+            [System.Runtime.InteropServices.FieldOffset(26)]
+            public ushort Reserved2_2;
+
+            [System.Runtime.InteropServices.FieldOffset(28)]
+            public ushort Reserved2_3;
+
+            [System.Runtime.InteropServices.FieldOffset(30)]
+            public ushort Reserved2_4;
+
+            [System.Runtime.InteropServices.FieldOffset(32)]
+            public uint UnitsExp;
+
+            [System.Runtime.InteropServices.FieldOffset(36)]
+            public uint Units;
+
+            [System.Runtime.InteropServices.FieldOffset(40)]
+            public int LogicalMin;
+
+            [System.Runtime.InteropServices.FieldOffset(44)]
+            public int LogicalMax;
+
+            [System.Runtime.InteropServices.FieldOffset(48)]
+            public int PhysicalMin;
+
+            [System.Runtime.InteropServices.FieldOffset(52)]
+            public int PhysicalMax;
+
+            // HIDP_VALUE_CAPS ends with a 16-byte Range/NotRange union.
+            [System.Runtime.InteropServices.FieldOffset(56)]
+            public ushort Usage;
+
+            [System.Runtime.InteropServices.FieldOffset(58)]
+            public ushort UsageMax;
+
+            [System.Runtime.InteropServices.FieldOffset(60)]
+            public ushort StringIndex;
+
+            [System.Runtime.InteropServices.FieldOffset(62)]
+            public ushort StringMax;
+
+            [System.Runtime.InteropServices.FieldOffset(64)]
+            public ushort DesignatorIndex;
+
+            [System.Runtime.InteropServices.FieldOffset(66)]
+            public ushort DesignatorMax;
+
+            [System.Runtime.InteropServices.FieldOffset(68)]
+            public ushort DataIndex;
+
+            [System.Runtime.InteropServices.FieldOffset(70)]
+            public ushort DataIndexMax;
+        }
+
+        [System.Runtime.InteropServices.DllImport("hid.dll")]
+        private static extern int HidP_GetCaps(
+            IntPtr preparsedData,
+            out HIDP_CAPS capabilities);
+
+        [System.Runtime.InteropServices.DllImport("hid.dll")]
+        private static extern int HidP_GetValueCaps(
+            int reportType,
+            [System.Runtime.InteropServices.Out] HIDP_VALUE_CAPS[] valueCaps,
+            ref ushort valueCapsLength,
+            IntPtr preparsedData);
+
+        [System.Runtime.InteropServices.StructLayout(
+            System.Runtime.InteropServices.LayoutKind.Sequential)]
+        
+        private struct RAWINPUTHEADER
+        {
+            public uint dwType;
+            public uint dwSize;
+            public IntPtr hDevice;
+            public IntPtr wParam;
+        }
+
+        [System.Runtime.InteropServices.DllImport(
+            "user32.dll",
+            SetLastError = true)]
+        private static extern uint GetRawInputData(
+            IntPtr hRawInput,
+            uint uiCommand,
+            IntPtr pData,
+            ref uint pcbSize,
+            uint cbSizeHeader);
+
+        [System.Runtime.InteropServices.StructLayout(
+            System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct RAWINPUTDEVICE
+        {
+            public ushort usUsagePage;
+            public ushort usUsage;
+            public uint dwFlags;
+            public IntPtr hwndTarget;
+        }
+
+        [System.Runtime.InteropServices.DllImport(
+            "user32.dll",
+            SetLastError = true)]
+        [return: System.Runtime.InteropServices.MarshalAs(
+            System.Runtime.InteropServices.UnmanagedType.Bool)]
+        private static extern bool RegisterRawInputDevices(
+            RAWINPUTDEVICE[] pRawInputDevices,
+            uint uiNumDevices,
+            uint cbSize);
+
+        private static void RegisterTouchpadRawInput(IntPtr hwnd)
+        {
+            var devices = new[]
+            {
+                new RAWINPUTDEVICE
+                {
+                    usUsagePage = 0x0D, // Digitizer
+                    usUsage = 0x05,     // Touch Pad
+                    dwFlags = RIDEV_INPUTSINK,
+                    hwndTarget = hwnd
+                }
+            };
+
+            bool success = RegisterRawInputDevices(
+                devices,
+                (uint)devices.Length,
+                (uint)System.Runtime.InteropServices.Marshal.SizeOf<RAWINPUTDEVICE>());
+
+            System.Diagnostics.Debug.WriteLine(
+                $"TOUCHPAD RAW INPUT REGISTERED: {success}, Error={System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
+        }
+
+        private static void DumpTouchpadValueCaps(IntPtr hDevice)
+        {
+            uint preparsedSize = 0;
+
+            uint result = GetRawInputDeviceInfo(
+                hDevice,
+                RIDI_PREPARSEDDATA,
+                IntPtr.Zero,
+                ref preparsedSize);
+
+            if (result == uint.MaxValue || preparsedSize == 0)
+                return;
+
+            IntPtr preparsedData =
+                System.Runtime.InteropServices.Marshal.AllocHGlobal((int)preparsedSize);
+
+            try
+            {
+                result = GetRawInputDeviceInfo(
+                    hDevice,
+                    RIDI_PREPARSEDDATA,
+                    preparsedData,
+                    ref preparsedSize);
+
+                if (result == uint.MaxValue)
+                    return;
+
+                int status = HidP_GetCaps(
+                    preparsedData,
+                    out HIDP_CAPS caps);
+
+                if (status != HIDP_STATUS_SUCCESS)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"HidP_GetCaps failed: 0x{status:X8}");
+                    return;
+                }
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"TOUCHPAD VALUE CAPS: {caps.NumberInputValueCaps}");
+
+                ushort count = caps.NumberInputValueCaps;
+
+                if (count == 0)
+                    return;
+
+                var valueCaps = new HIDP_VALUE_CAPS[count];
+
+                status = HidP_GetValueCaps(
+                    HIDP_INPUT,
+                    valueCaps,
+                    ref count,
+                    preparsedData);
+
+                if (status != HIDP_STATUS_SUCCESS)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"HidP_GetValueCaps failed: 0x{status:X8}");
+                    return;
+                }
+
+                for (int i = 0; i < count; i++)
+                {
+                    HIDP_VALUE_CAPS cap = valueCaps[i];
+
+                    // Only print fields relevant to our touchpad investigation.
+                    bool interesting =
+                        (cap.UsagePage == 0x0D &&
+                            (cap.Usage == 0x51 || cap.Usage == 0x54)) ||
+                        (cap.UsagePage == 0x01 &&
+                            (cap.Usage == 0x30 || cap.Usage == 0x31));
+
+                    if (!interesting)
+                        continue;
+
+                    System.Diagnostics.Debug.WriteLine(
+                        $"CAP: Page=0x{cap.UsagePage:X2}, " +
+                        $"Usage=0x{cap.Usage:X2}, " +
+                        $"Link={cap.LinkCollection}, " +
+                        $"ReportID=0x{cap.ReportID:X2}, " +
+                        $"BitSize={cap.BitSize}, " +
+                        $"Count={cap.ReportCount}, " +
+                        $"Range={cap.IsRange}");
+                }
+            }
+            finally
+            {
+                System.Runtime.InteropServices.Marshal.FreeHGlobal(preparsedData);
+            }
+        }
+
+        private void DumpTouchpadContactCount(
+            IntPtr hDevice,
+            IntPtr reportPtr,
+            uint reportSize)
+        {
+            uint preparsedSize = 0;
+
+            uint result = GetRawInputDeviceInfo(
+                hDevice,
+                RIDI_PREPARSEDDATA,
+                IntPtr.Zero,
+                ref preparsedSize);
+
+            if (result == uint.MaxValue || preparsedSize == 0)
+                return;
+
+            IntPtr preparsedData =
+                System.Runtime.InteropServices.Marshal.AllocHGlobal((int)preparsedSize);
+
+            try
+            {
+                result = GetRawInputDeviceInfo(
+                    hDevice,
+                    RIDI_PREPARSEDDATA,
+                    preparsedData,
+                    ref preparsedSize);
+
+                if (result == uint.MaxValue)
+                    return;
+
+                // Contact Count is in the top-level collection.
+                int status = HidP_GetUsageValue(
+                    HIDP_INPUT,
+                    0x0D,       // Digitizer
+                    0,          // Top-level collection
+                    0x54,       // Contact Count
+                    out uint contactCount,
+                    preparsedData,
+                    reportPtr,
+                    reportSize);
+
+                if (status != HIDP_STATUS_SUCCESS)
+                    return;
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"CONTACTS: {contactCount}");
+
+                if (contactCount != 2)
+                {
+                    _previousTouchpadY1 = null;
+                    _previousTouchpadY2 = null;
+                    return;
+                }
+
+                if (!TryGetTouchpadContact(
+                        1, preparsedData, reportPtr, reportSize,
+                        out _, out _, out uint y1) ||
+                    !TryGetTouchpadContact(
+                        2, preparsedData, reportPtr, reportSize,
+                        out _, out _, out uint y2))
+                {
+                    _previousTouchpadY1 = null;
+                    _previousTouchpadY2 = null;
+                    return;
+                }
+
+                if (_previousTouchpadY1.HasValue &&
+                    _previousTouchpadY2.HasValue)
+                {
+                    int deltaY1 = (int)y1 - (int)_previousTouchpadY1.Value;
+                    int deltaY2 = (int)y2 - (int)_previousTouchpadY2.Value;
+
+                    // Both fingers must move vertically in the same direction.
+                    if (deltaY1 != 0 &&
+                        deltaY2 != 0 &&
+                        Math.Sign(deltaY1) == Math.Sign(deltaY2))
+                    {
+                        if (!_mouseEnabled || _overlayPaused)
+                            return;
+
+                        SetMouseSvg(
+                            deltaY1 < 0
+                                ? "mouse_scrolldown.svg"
+                                : "mouse_scrollup.svg");
+
+                        _scrollTimer?.Stop();
+                        _scrollTimer?.Start();
+                    }
+                }
+
+                _previousTouchpadY1 = y1;
+                _previousTouchpadY2 = y2;
+
+            }
+            finally
+            {
+                System.Runtime.InteropServices.Marshal.FreeHGlobal(preparsedData);
+            }
+        }
+
+        private static bool TryGetTouchpadContact(
+            ushort linkCollection,
+            IntPtr preparsedData,
+            IntPtr reportPtr,
+            uint reportSize,
+            out uint contactId,
+            out uint x,
+            out uint y)
+        {
+            int idStatus = HidP_GetUsageValue(
+                HIDP_INPUT,
+                0x0D,
+                linkCollection,
+                0x51,
+                out contactId,
+                preparsedData,
+                reportPtr,
+                reportSize);
+
+            int xStatus = HidP_GetUsageValue(
+                HIDP_INPUT,
+                0x01,
+                linkCollection,
+                0x30,
+                out x,
+                preparsedData,
+                reportPtr,
+                reportSize);
+
+            int yStatus = HidP_GetUsageValue(
+                HIDP_INPUT,
+                0x01,
+                linkCollection,
+                0x31,
+                out y,
+                preparsedData,
+                reportPtr,
+                reportSize);
+
+            return idStatus == HIDP_STATUS_SUCCESS &&
+                   xStatus == HIDP_STATUS_SUCCESS &&
+                   yStatus == HIDP_STATUS_SUCCESS;
+        }
+
+        private static uint? _previousTouchpadY1;
+        private static uint? _previousTouchpadY2;
+
+        private void DumpTouchpadRawInput(IntPtr hRawInput)
+        {
+            uint size = 0;
+            uint headerSize =
+                (uint)System.Runtime.InteropServices.Marshal.SizeOf<RAWINPUTHEADER>();
+
+            // First call: ask Windows how large the packet is.
+            uint result = GetRawInputData(
+                hRawInput,
+                RID_INPUT,
+                IntPtr.Zero,
+                ref size,
+                headerSize);
+
+            if (result == uint.MaxValue || size == 0)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"TOUCHPAD RAW INPUT: failed to get size, Error={System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
+                return;
+            }
+
+            IntPtr buffer = System.Runtime.InteropServices.Marshal.AllocHGlobal((int)size);
+
+            try
+            {
+                uint bytesRead = GetRawInputData(
+                    hRawInput,
+                    RID_INPUT,
+                    buffer,
+                    ref size,
+                    headerSize);
+
+                if (bytesRead == uint.MaxValue)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"TOUCHPAD RAW INPUT: read failed, Error={System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
+                    return;
+                }
+
+                var header =
+                    System.Runtime.InteropServices.Marshal.PtrToStructure<RAWINPUTHEADER>(buffer);
+
+                if (header.dwType != RIM_TYPEHID)
+                    return;
+
+                // Immediately after RAWINPUTHEADER come:
+                // DWORD dwSizeHid
+                // DWORD dwCount
+                // BYTE  bRawData[]
+                int hidOffset = (int)headerSize;
+
+                uint reportSize =
+                    unchecked((uint)System.Runtime.InteropServices.Marshal.ReadInt32(buffer, hidOffset));
+
+                uint reportCount =
+                    unchecked((uint)System.Runtime.InteropServices.Marshal.ReadInt32(buffer, hidOffset + 4));
+
+                int dataOffset = hidOffset + 8;
+
+                for (uint report = 0; report < reportCount; report++)
+                {
+                    int offset = dataOffset + (int)(report * reportSize);
+
+                    DumpTouchpadContactCount(
+                        header.hDevice,
+                        IntPtr.Add(buffer, offset),
+                        reportSize);
+                }
+            }
+            finally
+            {
+                System.Runtime.InteropServices.Marshal.FreeHGlobal(buffer);
+            }
+        }
 
         // === Native hit-testing for borderless resize ===
 
@@ -1899,6 +2460,11 @@ namespace KeyClickOverlay
         /// <summary>Handle non-client hit-testing so the window can be resized/dragged.</summary>
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
+
+            if (msg == WM_INPUT)
+            {
+                DumpTouchpadRawInput(lParam);
+            }
 
             // Handle our app-specific toggle message
             if (msg == WM_TOGGLE_CLICKTHROUGH)
@@ -8620,6 +9186,9 @@ namespace KeyClickOverlay
         /// <summary>Show scroll state/icon briefly, then revert to idle.</summary>
         private void GlobalHook_MouseWheel(object? _, System.Windows.Forms.MouseEventArgs e)
         {
+            System.Diagnostics.Debug.WriteLine(
+                $"GLOBAL WHEEL: Delta={e.Delta}");
+
             if (!_mouseEnabled || _overlayPaused)
             {
                 return;
