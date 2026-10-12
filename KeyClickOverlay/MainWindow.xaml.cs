@@ -7885,8 +7885,8 @@ namespace KeyClickOverlay
                 StrokeStartLineCap = PenLineCap.Round,
                 StrokeEndLineCap = PenLineCap.Round,
                 StrokeLineJoin = PenLineJoin.Round,
-                Width = 18,
-                Height = 20,
+                Width = 16,
+                Height = 18,
                 Stretch = Stretch.Uniform,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
