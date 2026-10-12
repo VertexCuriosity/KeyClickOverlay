@@ -7846,23 +7846,7 @@ namespace KeyClickOverlay
         private static FrameworkElement BuildDialogIcon(DialogIcon icon)
         {
             if (icon == DialogIcon.None)
-            {
-                return new FrameworkElement
-                {
-                    Width = 0,
-                    Height = 0
-                };
-            }
-
-            string glyph = icon switch
-            {
-                DialogIcon.Info => "i",
-                DialogIcon.Success => "✓",
-                DialogIcon.Warning => "!",
-                DialogIcon.Error => "×",
-                DialogIcon.Question => "?",
-                _ => "i"
-            };
+                return new FrameworkElement { Width = 0, Height = 0 };
 
             Brush foreground = icon switch
             {
@@ -7873,6 +7857,41 @@ namespace KeyClickOverlay
                 _ => Brushes.DodgerBlue
             };
 
+            Geometry geometry = Geometry.Parse(icon switch
+            {
+                DialogIcon.Info =>
+                    "M 9,7 L 9,7.1 M 9,11 L 9,19",
+
+                DialogIcon.Success =>
+                    "M 4,13 L 8,17 L 16,8",
+
+                DialogIcon.Warning =>
+                    "M 9,5 L 9,13 M 9,18 L 9,18.1",
+
+                DialogIcon.Error =>
+                    "M 5,5 L 13,13 M 13,5 L 5,13",
+
+                DialogIcon.Question =>
+                    "M 5,7 C 5,1 13,1 13,7 C 13,11 9,11 9,14 M 9,19 L 9,19.1",
+
+                _ => "M 9,7 L 9,7.1 M 9,11 L 9,19"
+            });
+
+            var symbol = new System.Windows.Shapes.Path
+            {
+                Data = geometry,
+                Stroke = foreground,
+                StrokeThickness = 2.5,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round,
+                StrokeLineJoin = PenLineJoin.Round,
+                Width = 18,
+                Height = 20,
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
             return new Border
             {
                 Width = 36,
@@ -7881,16 +7900,7 @@ namespace KeyClickOverlay
                 BorderThickness = new Thickness(2),
                 BorderBrush = foreground,
                 VerticalAlignment = VerticalAlignment.Top,
-                Child = new TextBlock
-                {
-                    Text = glyph,
-                    Foreground = foreground,
-                    FontSize = 22,
-                    FontWeight = FontWeights.SemiBold,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    TextAlignment = TextAlignment.Center
-                }
+                Child = symbol
             };
         }
 
