@@ -398,6 +398,10 @@ namespace KeyClickOverlay
         }
 
         private bool _prefsLoadFailed;
+        private bool _corruptedPrefsNeedsBackup;
+        private bool _prefsInitializationComplete;
+        private string? _prefsSnapshot;
+        private string? _corruptedPrefsBackupPath;
 
         /// <summary>Full path to prefs.json in AppData</summary>
         private static string PrefsPath =>
@@ -419,6 +423,7 @@ namespace KeyClickOverlay
             catch (JsonException ex)
             {
                 _prefsLoadFailed = true;
+                _corruptedPrefsNeedsBackup = true;
                 _prefs = new UserPrefs();
 
                 Dispatcher.BeginInvoke(new Action(() =>
@@ -456,16 +461,276 @@ namespace KeyClickOverlay
             }
         }
 
-        /// <summary>Save lightweight user preferences without overwriting a file that failed to load.</summary>
-        private void SavePrefs()
+        private bool BackupCorruptedPrefsFile()
         {
-            if (_prefsLoadFailed)
+            if (!_corruptedPrefsNeedsBackup)
+                return true;
+
+            try
+            {
+                string directory = IOPath.GetDirectoryName(PrefsPath)!;
+                string backupPath = IOPath.Combine(
+                    directory,
+                    $"prefs-corrupted-{DateTime.Now:yyyyMMdd-HHmmss-fff}-{Guid.NewGuid():N}.json");
+ 
+                File.Move(PrefsPath, backupPath);
+
+                _corruptedPrefsBackupPath = backupPath;
+                _corruptedPrefsNeedsBackup = false;
+                _prefsLoadFailed = false;
+
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                ShowModernInfo(
+                    "Preferences backup failed",
+                    "KeyClickOverlay could not preserve the corrupted preferences file.\n\n" +
+                    "The original file has not been overwritten.\n\n" +
+                    ex.Message,
+                    icon: DialogIcon.Error);
+
+                return false;
+            }
+        }
+
+
+        private bool ShowDeleteBackupConfirmation()
+        {
+            bool confirmed = false;
+            var surface = new SolidColorBrush(
+                AppTheme.IsDark
+                    ? Color.FromRgb(43, 43, 43)
+                    : Color.FromRgb(249, 249, 249));
+
+            surface.Freeze();
+            var dialog = CreateDialogWindow("Delete backup", surface, centerOnScreen: true);
+
+            dialog.Width = dialog.MinWidth = dialog.MaxWidth = 440;
+            dialog.MinHeight = 0;
+            dialog.SizeToContent = SizeToContent.Height;
+
+            var messageGrid = CreateDialogMessageContent(
+                "Permanently delete the corrupted preferences backup?\n\nThis cannot be undone.",
+                DialogIcon.Warning, surface);
+
+            var buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(20, 8, 20, 16)
+            };
+
+            var cancelButton = new Wpf.Ui.Controls.Button
+            {
+                Content = "Cancel",
+                MinWidth = 88,
+                Height = 34,
+                IsCancel = true,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+
+            var deleteButton = new Wpf.Ui.Controls.Button
+            {
+                Content = "Delete backup",
+                MinWidth = 110,
+                Height = 34
+            };
+
+            cancelButton.Click += (_, _) => dialog.Close();
+            deleteButton.Click += (_, _) =>
+            {
+                confirmed = true;
+                dialog.Close();
+            };
+
+            buttons.Children.Add(cancelButton);
+            buttons.Children.Add(deleteButton);
+
+            var content = new StackPanel { Background = surface };
+            content.Children.Add(messageGrid);
+            content.Children.Add(buttons);
+
+            var titleBar = new WpfTitleBar
+            {
+                Title = dialog.Title,
+                ShowMinimize = false,
+                ShowMaximize = false,
+                ShowClose = true,
+                Height = 40,
+                Padding = new Thickness(18, 0, 0, 0),
+                Background = surface
+            };
+
+            var root = new StackPanel { Background = surface };
+            root.Children.Add(titleBar);
+            root.Children.Add(content);
+
+            dialog.Content = root;
+            ApplyWpfUiDialogTheme(dialog);
+            dialog.Loaded += (_, _) => cancelButton.Focus();
+            dialog.ShowDialog();
+
+            return confirmed;
+        }
+
+        private void ShowCorruptedFileRecoveryDialog(
+            string backupPath,
+            bool isPreset = false)
+        {
+            var surface = new SolidColorBrush(
+                AppTheme.IsDark
+                    ? Color.FromRgb(43, 43, 43)
+                    : Color.FromRgb(249, 249, 249));
+
+            surface.Freeze();
+            var dialog = CreateDialogWindow(
+                "Previous preferences file preserved", surface, centerOnScreen: true);
+
+            dialog.Width = dialog.MinWidth = dialog.MaxWidth = 480;
+            dialog.MinHeight = 0;
+            dialog.SizeToContent = SizeToContent.Height;
+
+            var messageGrid = CreateDialogMessageContent(
+                isPreset
+                    ? "KeyClickOverlay has preserved your previous preset because it contains invalid JSON.\n\n" +
+                      "Your new preset has been saved successfully.\n\n" +
+                      "You can open the backup to inspect or repair it, delete it, or keep it for later."
+                    : "KeyClickOverlay has preserved your previous preferences file because it contains invalid JSON.\n\n" +
+                      "Your new preferences have been saved successfully.\n\n" +
+                      "You can open the backup to inspect or repair it, delete it, or keep it for later.",
+                DialogIcon.Warning, surface);
+
+            var buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(20, 0, 20, 16)
+            };
+
+            var openButton = new Wpf.Ui.Controls.Button
+            {
+                Content = "Open backup",
+                MinWidth = 100,
+                Height = 34,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+
+            var deleteButton = new Wpf.Ui.Controls.Button
+            {
+                Content = "Delete backup",
+                MinWidth = 110,
+                Height = 34,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+
+            var keepButton = new Wpf.Ui.Controls.Button
+            {
+                Content = "Keep backup",
+                MinWidth = 100,
+                Height = 34,
+                IsDefault = true,
+                IsCancel = true
+            };
+
+            openButton.Click += (_, _) =>
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start(
+                        new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = backupPath,
+                            UseShellExecute = true
+                        });
+                }
+                catch (Exception ex) when (ex is IOException or System.ComponentModel.Win32Exception)
+                {
+                    ShowModernInfo("Could not open backup", ex.Message, icon: DialogIcon.Warning);
+                }
+            };
+
+            deleteButton.Click += (_, _) =>
+            {
+                if (!ShowDeleteBackupConfirmation())
+                    return;
+
+                try
+                {
+                    File.Delete(backupPath);
+                    dialog.Close();
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    ShowModernInfo("Could not delete backup", ex.Message, icon: DialogIcon.Warning);
+                }
+            };
+
+            keepButton.Click += (_, _) => dialog.Close();
+
+            buttons.Children.Add(openButton);
+            buttons.Children.Add(deleteButton);
+            buttons.Children.Add(keepButton);
+
+            var content = new StackPanel { Background = surface };
+            content.Children.Add(messageGrid);
+            content.Children.Add(buttons);
+
+            var titleBar = new WpfTitleBar
+            {
+                Title = dialog.Title,
+                ShowMinimize = false,
+                ShowMaximize = false,
+                ShowClose = true,
+                Height = 40,
+                Padding = new Thickness(18, 0, 0, 0),
+                Background = surface
+            };
+
+            var root = new StackPanel { Background = surface };
+            root.Children.Add(titleBar);
+            root.Children.Add(content);
+
+            dialog.Content = root;
+            ApplyWpfUiDialogTheme(dialog);
+            dialog.Loaded += (_, _) => keepButton.Focus();
+            dialog.ShowDialog();
+        }
+
+
+        /// <summary>Save lightweight user preferences without overwriting a file that failed to load.</summary>
+        private void SavePrefs(bool userInitiated = false)
+        {
+            if (!_prefsInitializationComplete && _prefsLoadFailed && !userInitiated)
                 return;
 
             try
             {
                 string json = JsonSerializer.Serialize(_prefs, PrefsJsonOptions);
+
+                if (json == _prefsSnapshot)
+                    return;
+
+                if (_prefsLoadFailed)
+                {
+                    if (!_corruptedPrefsNeedsBackup)
+                        return;
+
+                    if (!BackupCorruptedPrefsFile())
+                        return;
+                }
+
                 WriteFileSafely(PrefsPath, json);
+                _prefsSnapshot = json;
+
+                if (_corruptedPrefsBackupPath is not null)
+                {
+                    string backupPath = _corruptedPrefsBackupPath;
+                    _corruptedPrefsBackupPath = null;
+
+                    Dispatcher.BeginInvoke(new Action(() =>
+                        ShowCorruptedFileRecoveryDialog(backupPath)));
+                }
             }
             catch (Exception ex)
             {
@@ -498,7 +763,7 @@ namespace KeyClickOverlay
                 return;
 
             _prefs.PrivacyNoticeShown = true;
-            SavePrefs();
+            SavePrefs(userInitiated: true);
         }
 
         // === JSON error diagnostics ===
@@ -653,31 +918,49 @@ namespace KeyClickOverlay
 
         // === Presets (named JSON files under %AppData%\KeyClickOverlay\presets) ===
 
-        /// <summary>On startup: if a last-used preset exists, apply it silently.</summary>
+        /// <summary>On startup: restore the last-used preset and report invalid JSON after initialization.</summary>
         private void TryApplyLastPresetOnStartup()
         {
+            string? path = _prefs.LastPresetPath;
+            if (string.IsNullOrWhiteSpace(path))
+                return;
+
             try
             {
-                var path = _prefs.LastPresetPath;
-                if (string.IsNullOrWhiteSpace(path)) return;
-
                 if (!File.Exists(path))
                 {
-                    // File gone → clear pointer and persist
                     _prefs.LastPresetPath = null;
                     SavePrefs();
                     return;
                 }
 
-                var json = File.ReadAllText(path);
-                var data = JsonSerializer.Deserialize<PresetData>(json, PrefsJsonOptions);
-                if (data is null) return;
+                string json = File.ReadAllText(path);
+                var data = JsonSerializer.Deserialize<PresetData>(json, PrefsJsonOptions)
+                    ?? throw new JsonException("The preset file contains no preset data.");
 
-                ApplyPresetFromData(data); // apply without prompts
+                ApplyPresetFromData(data);
+                _corruptedPresetPaths.Remove(path);
             }
-            catch
+            catch (JsonException ex)
             {
-                // Fail silently; don't block startup on corrupt preset
+                if (_corruptedPresetPaths.Add(path))
+                {
+                    Dispatcher.BeginInvoke(
+                        new Action(() =>
+                        {
+                            string reportPath = CreateJsonErrorReport(path, ex);
+                            ShowPresetErrorDialog(path, reportPath, ex);
+                        }),
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                }
+            }
+            catch (IOException)
+            {
+                // File could not be read; leave it untouched.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Access denied; leave the file untouched.
             }
         }
 
@@ -687,6 +970,8 @@ namespace KeyClickOverlay
 
         // The preset that was active immediately before the current one.
         private string? _previousPresetPath;
+        private readonly HashSet<string> _corruptedPresetPaths =
+            new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>Serializable snapshot of the current UI/state saved as a preset JSON.</summary>
         private sealed class PresetData
@@ -822,6 +1107,9 @@ namespace KeyClickOverlay
             {
                 string? path = _prefs.LastPresetPath;
                 if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                    return;
+
+                if (_corruptedPresetPaths.Contains(path))
                     return;
 
                 string json = File.ReadAllText(path);
@@ -1359,6 +1647,8 @@ namespace KeyClickOverlay
             }
             catch (JsonException ex)
             {
+                _corruptedPresetPaths.Add(path);
+
                 try
                 {
                     string reportPath = CreateJsonErrorReport(path, ex);
@@ -1404,6 +1694,35 @@ namespace KeyClickOverlay
             SavePrefs();
         }
 
+        private string? BackupCorruptedPresetFile(string path)
+        {
+            try
+            {
+                string directory = IOPath.GetDirectoryName(path)!;
+                string name = IOPath.GetFileNameWithoutExtension(path);
+
+                string backupPath = IOPath.Combine(
+                    directory,
+                    $"{name}-corrupted-{DateTime.Now:yyyyMMdd-HHmmss-fff}-{Guid.NewGuid():N}.json");
+
+                File.Move(path, backupPath);
+
+                _corruptedPresetPaths.Remove(path);
+                return backupPath;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                ShowModernInfo(
+                    "Preset backup failed",
+                    "KeyClickOverlay could not preserve the corrupted preset.\n\n" +
+                    "The original file has not been overwritten.\n\n" + ex.Message,
+                    icon: DialogIcon.Error);
+
+                return null;
+            }
+        }
+
+
         /// <summary>Overwrite a specific preset file with the current UI/state; optionally make it active.</summary>
         private bool SaveCurrentStateToPreset(string path, bool makeActive)
         {
@@ -1425,9 +1744,28 @@ namespace KeyClickOverlay
                     }
                     catch (JsonException ex)
                     {
-                        string reportPath = CreateJsonErrorReport(path, ex);
-                        ShowPresetErrorDialog(path, reportPath, ex);
-                        return false;
+                        if (_corruptedPresetPaths.Add(path))
+                        {
+                            string reportPath = CreateJsonErrorReport(path, ex);
+                            ShowPresetErrorDialog(path, reportPath, ex);
+                        }
+
+                        string? backupPath = BackupCorruptedPresetFile(path);
+                        if (backupPath is null)
+                            return false;
+
+                        var replacementPreset = BuildPresetFromCurrent();
+                        string replacementJson = JsonSerializer.Serialize(replacementPreset, PrefsJsonOptions);
+
+                        WriteFileSafely(path, replacementJson);
+
+                        Dispatcher.BeginInvoke(new Action(() =>
+                            ShowCorruptedFileRecoveryDialog(backupPath, isPreset: true)));
+
+                        if (makeActive)
+                            ApplyPresetFromPath(path);
+
+                        return true;
                     }
                 }
 
@@ -1446,11 +1784,17 @@ namespace KeyClickOverlay
                     if (string.Equals(_prefs.LastPresetPath, path, StringComparison.OrdinalIgnoreCase))
                         SavePrefs();
                 }
+
                 return true;
             }
             catch (Exception ex)
             {
-                ShowModernInfo("Preset error", "Failed to save preset:\n" + ex.Message, ok: "OK", icon: DialogIcon.Error);
+                ShowModernInfo(
+                    "Preset error",
+                    "Failed to save preset:\n" + ex.Message,
+                    ok: "OK",
+                    icon: DialogIcon.Error);
+
                 return false;
             }
         }
@@ -2042,6 +2386,9 @@ namespace KeyClickOverlay
             SetupThumbnailToolbarButton();
             TryApplyLastPresetOnStartup();
             ShowFirstRunPrivacyNotice();
+
+            _prefsSnapshot = JsonSerializer.Serialize(_prefs, PrefsJsonOptions);
+            _prefsInitializationComplete = true;
         }
 
         /// <summary>Add the Windows taskbar thumbnail toolbar buttons.</summary>
