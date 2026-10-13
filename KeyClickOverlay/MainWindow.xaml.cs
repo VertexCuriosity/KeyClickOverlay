@@ -3263,7 +3263,15 @@ namespace KeyClickOverlay
                     // Clicking the save icon overwrites *this* preset and makes it active
                     saveBtn.Click += (_, __) =>
                     {
-                        SaveCurrentStateToPreset(path, makeActive: true);
+                        if (SaveCurrentStateToPreset(path, makeActive: true))
+                        {
+                            ShowModernInfoAuto(
+                                "Preset saved",
+                                "The preset was overwritten with the current settings.",
+                                milliseconds: 2500,
+                                icon: DialogIcon.Success);
+                        }
+
                         RebuildPresetList();
                         savePresetMenu.IsSubmenuOpen = true; // Stay open to show updated highlight
                     };
