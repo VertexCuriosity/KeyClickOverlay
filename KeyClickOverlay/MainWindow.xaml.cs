@@ -581,6 +581,76 @@ namespace KeyClickOverlay
             return logPath;
         }
 
+        // === JSON diagnostic log cleanup ===
+
+        /// <summary>Find older JSON diagnostic reports, excluding the current report.</summary>
+        private static string[] GetOldJsonErrorReports(string currentReportPath)
+        {
+            string? logDirectory = IOPath.GetDirectoryName(currentReportPath);
+
+            if (string.IsNullOrWhiteSpace(logDirectory) || !Directory.Exists(logDirectory))
+                return Array.Empty<string>();
+
+            return Directory.GetFiles(logDirectory, "json-error-*.log")
+                .Where(path => !string.Equals(
+                    IOPath.GetFullPath(path),
+                    IOPath.GetFullPath(currentReportPath),
+                    StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+        }
+
+        /// <summary>Offer to delete older JSON diagnostic reports while preserving the current report.</summary>
+        private void ShowOldJsonLogsCleanupDialog(string currentReportPath)
+        {
+            string[] oldReports = GetOldJsonErrorReports(currentReportPath);
+
+            if (oldReports.Length == 0)
+                return;
+
+            string message =
+                $"KeyClickOverlay found {oldReports.Length} older diagnostic log file(s).\n\n" +
+                "Would you like to delete them?\n\n" +
+                "The latest diagnostic report will be preserved.";
+
+            bool result = ShowModernYesNo(
+                "Old diagnostic logs",
+                message,
+                yes: "Delete old logs",
+                no: "Cancel",
+                icon: DialogIcon.Question);
+
+            if (!result)
+                return;
+
+            int deleted = 0;
+            int failed = 0;
+
+            foreach (string path in GetOldJsonErrorReports(currentReportPath))
+            {
+                try
+                {
+                    File.Delete(path);
+                    deleted++;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    failed++;
+                    System.Diagnostics.Debug.WriteLine(
+                        $"Failed to delete diagnostic log '{path}': {ex.Message}");
+                }
+            }
+
+            if (failed > 0)
+            {
+                ShowModernInfo(
+                    "Log cleanup incomplete",
+                    $"{deleted} old diagnostic log(s) deleted.\n" +
+                    $"{failed} could not be deleted.\n\n" +
+                    "The latest diagnostic report has been preserved.",
+                    icon: DialogIcon.Warning);
+            }
+        }
+
         // === Presets (named JSON files under %AppData%\KeyClickOverlay\presets) ===
 
         /// <summary>On startup: if a last-used preset exists, apply it silently.</summary>
@@ -8545,6 +8615,8 @@ namespace KeyClickOverlay
 
                 ReassertTopmost();
             }
+
+            ShowOldJsonLogsCleanupDialog(reportPath);
         }
 
         /// <summary>
