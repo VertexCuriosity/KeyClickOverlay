@@ -9333,10 +9333,14 @@ namespace KeyClickOverlay
                 if (_transparentToMouse)
                     return;
 
-                // Normal mode shortcuts below
-                if (mods.HasFlag(ModifierKeys.Control) && e.KeyCode == Keys.S) // Ctrl+S = overwrite active preset
+                // Ctrl+S saves only when KeyClickOverlay has keyboard focus.
+                if (mods.HasFlag(ModifierKeys.Control) && e.KeyCode == Keys.S)
                 {
-                    Dispatcher.Invoke(SaveCurrentStateToActivePreset);
+                    Dispatcher.Invoke(() =>
+                    {
+                        if (IsKeyboardFocusWithin)
+                            SaveCurrentStateToActivePreset();
+                    });
                     return;
                 }
 
