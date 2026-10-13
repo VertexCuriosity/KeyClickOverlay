@@ -397,45 +397,80 @@ namespace KeyClickOverlay
                 $"{(_overlayPaused ? "Resume" : "Pause")} KeyClickOverlay ({GetPauseOverlayHotkeyLabel()})";
         }
 
+        private bool _prefsLoadFailed;
+
         /// <summary>Full path to prefs.json in AppData</summary>
         private static string PrefsPath =>
             IOPath.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                            "KeyClickOverlay", "prefs.json");
 
-        /// <summary>Load lightweight user preferences from disk (fails silently).</summary>
+        /// <summary>Load lightweight user preferences from disk.</summary>
         private void LoadPrefs()
         {
             try
             {
-                var dir = IOPath.GetDirectoryName(PrefsPath)!;
-                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                if (!File.Exists(PrefsPath))
+                    return;
 
-                if (File.Exists(PrefsPath))
-                {
-                    string json = File.ReadAllText(PrefsPath);
-                    _prefs = JsonSerializer.Deserialize<UserPrefs>(json, PrefsJsonOptions) ?? new UserPrefs();
-                }
+                string json = File.ReadAllText(PrefsPath);
+                _prefs = JsonSerializer.Deserialize<UserPrefs>(json, PrefsJsonOptions)
+                    ?? throw new JsonException("The preferences file contains no valid data.");
             }
-            catch
+            catch (JsonException ex)
             {
+                _prefsLoadFailed = true;
                 _prefs = new UserPrefs();
+
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        string reportPath = CreateJsonErrorReport(PrefsPath, ex);
+                        ShowPresetErrorDialog(PrefsPath, reportPath, ex);
+                    }
+                    catch (Exception reportEx)
+                    {
+                        ShowModernInfo(
+                            "Preferences could not be loaded",
+                            $"The preferences file contains invalid JSON:\n{PrefsPath}\n\n" +
+                            $"Error: {ex.Message}\n\n" +
+                            "Your original preferences file has not been modified.\n\n" +
+                            $"A diagnostic report could not be created:\n{reportEx.Message}",
+                            icon: DialogIcon.Error);
+                    }
+                }), System.Windows.Threading.DispatcherPriority.ContextIdle);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _prefsLoadFailed = true;
+                _prefs = new UserPrefs();
+
+                Dispatcher.BeginInvoke(new Action(() =>
+                    ShowModernInfo(
+                        "Preferences could not be loaded",
+                        "KeyClickOverlay could not access your saved preferences.\n\n" +
+                        "The original file will not be overwritten.\n\n" + ex.Message,
+                        ok: "OK",
+                        icon: DialogIcon.Error)),
+                    System.Windows.Threading.DispatcherPriority.ContextIdle);
             }
         }
 
-        /// <summary>Save lightweight user preferences to disk (fails silently).</summary>
+        /// <summary>Save lightweight user preferences without overwriting a file that failed to load.</summary>
         private void SavePrefs()
         {
+            if (_prefsLoadFailed)
+                return;
+
             try
             {
-                var dir = IOPath.GetDirectoryName(PrefsPath)!;
-                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-
                 string json = JsonSerializer.Serialize(_prefs, PrefsJsonOptions);
-                File.WriteAllText(PrefsPath, json);
+                WriteFileSafely(PrefsPath, json);
             }
-            catch
+            catch (Exception ex)
             {
-                // ignore
+                System.Diagnostics.Debug.WriteLine(
+                    $"Failed to save preferences: {ex.Message}");
             }
         }
 
@@ -466,6 +501,85 @@ namespace KeyClickOverlay
             SavePrefs();
         }
 
+        // === JSON error diagnostics ===
+
+        /// <summary>Writes a file through a temporary file to protect the existing contents.</summary>
+        private static void WriteFileSafely(string path, string content)
+        {
+            string directory = IOPath.GetDirectoryName(path)!;
+            Directory.CreateDirectory(directory);
+
+            string tempPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+
+            try
+            {
+                File.WriteAllText(tempPath, content);
+                File.Move(tempPath, path, overwrite: true);
+            }
+            finally
+            {
+                if (File.Exists(tempPath))
+                {
+                    try { File.Delete(tempPath); }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+                }
+            }
+        }
+
+        private static string CreateJsonErrorReport(string filePath, JsonException exception)
+        {
+            string logDirectory = IOPath.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "KeyClickOverlay", "logs");
+
+            Directory.CreateDirectory(logDirectory);
+
+            string logPath = IOPath.Combine(
+                logDirectory,
+                $"json-error-{DateTime.Now:yyyyMMdd-HHmmss-fff}-{Guid.NewGuid():N}.log");
+
+            var report = new System.Text.StringBuilder();
+
+            report.AppendLine("KeyClickOverlay - JSON Error Report");
+            report.AppendLine("===================================");
+            report.AppendLine();
+            report.AppendLine($"Date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            report.AppendLine($"File: {filePath}");
+            report.AppendLine($"Error: {exception.Message}");
+            report.AppendLine();
+
+            if (exception.LineNumber is long lineNumber)
+            {
+                report.AppendLine($"Line: {lineNumber + 1}");
+
+                if (exception.BytePositionInLine is long bytePosition)
+                    report.AppendLine($"Byte position in line: {bytePosition + 1}");
+
+                report.AppendLine();
+                report.AppendLine("Content surrounding the error:");
+                report.AppendLine();
+
+                string[] lines = File.ReadAllLines(filePath);
+                int errorLine = checked((int)lineNumber);
+
+                int start = Math.Max(0, errorLine - 3);
+                int end = Math.Min(lines.Length - 1, errorLine + 3);
+
+                for (int i = start; i <= end; i++)
+                {
+                    string marker = i == errorLine ? ">" : " ";
+                    report.AppendLine($"{marker} {i + 1,4} | {lines[i]}");
+                }
+            }
+
+            report.AppendLine();
+            report.AppendLine("The original JSON file has not been modified by this report.");
+
+            File.WriteAllText(logPath, report.ToString());
+
+            return logPath;
+        }
 
         // === Presets (named JSON files under %AppData%\KeyClickOverlay\presets) ===
 
@@ -643,7 +757,7 @@ namespace KeyClickOverlay
                 string json = File.ReadAllText(path);
                 var preset = JsonSerializer.Deserialize<PresetData>(json, PrefsJsonOptions);
                 if (preset is null)
-                    return;
+                    throw new JsonException("The preset file contains no preset data.");
 
                 var geometry = BuildPresetFromCurrent();
 
@@ -665,7 +779,12 @@ namespace KeyClickOverlay
                 preset.DpiScaleY = geometry.DpiScaleY;
 
                 json = JsonSerializer.Serialize(preset, PrefsJsonOptions);
-                File.WriteAllText(path, json);
+                WriteFileSafely(path, json);
+            }
+            catch (JsonException ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"Invalid active preset during geometry update: {ex.Message}");
             }
             catch (Exception ex)
             {
@@ -1152,10 +1271,7 @@ namespace KeyClickOverlay
                 var json = File.ReadAllText(path);
                 var data = JsonSerializer.Deserialize<PresetData>(json, PrefsJsonOptions);
                 if (data is null)
-                {
-                    ShowModernInfo("Invalid preset", "Preset file is invalid:\n" + path, ok: "OK", icon: DialogIcon.Warning);
-                    return;
-                }
+                    throw new JsonException("The preset file contains no preset data.");
 
                 ApplyPresetFromData(data, preserveTransparentMode);
 
@@ -1171,9 +1287,29 @@ namespace KeyClickOverlay
                 _prefs.LastPresetPath = path;
                 SavePrefs();
             }
+            catch (JsonException ex)
+            {
+                try
+                {
+                    string reportPath = CreateJsonErrorReport(path, ex);
+                    ShowPresetErrorDialog(path, reportPath, ex);
+                }
+                catch (Exception reportEx)
+                {
+                    ShowModernInfo(
+                        "Preset could not be loaded",
+                        $"The preset contains invalid JSON:\n{path}\n\n" +
+                        $"Error: {ex.Message}\n\n" +
+                        $"A diagnostic report could not be created:\n{reportEx.Message}",
+                        icon: DialogIcon.Error);
+                }
+            }
             catch (Exception ex)
             {
-                ShowModernInfo("Preset error", "Failed to apply preset:\n" + ex.Message, ok: "OK", icon: DialogIcon.Error);
+                ShowModernInfo(
+                    "Preset error",
+                    "Failed to apply preset:\n" + ex.Message,
+                    icon: DialogIcon.Error);
             }
         }
 
@@ -1199,15 +1335,35 @@ namespace KeyClickOverlay
         }
 
         /// <summary>Overwrite a specific preset file with the current UI/state; optionally make it active.</summary>
-        private void SaveCurrentStateToPreset(string path, bool makeActive)
+        private bool SaveCurrentStateToPreset(string path, bool makeActive)
         {
             try
             {
                 Directory.CreateDirectory(IOPath.GetDirectoryName(path)!);
 
+                if (File.Exists(path))
+                {
+                    string existingJson = File.ReadAllText(path);
+
+                    try
+                    {
+                        var existingPreset = JsonSerializer.Deserialize<PresetData>(
+                            existingJson, PrefsJsonOptions);
+
+                        if (existingPreset is null)
+                            throw new JsonException("The preset file contains no preset data.");
+                    }
+                    catch (JsonException ex)
+                    {
+                        string reportPath = CreateJsonErrorReport(path, ex);
+                        ShowPresetErrorDialog(path, reportPath, ex);
+                        return false;
+                    }
+                }
+
                 var data = BuildPresetFromCurrent();
                 string json = JsonSerializer.Serialize(data, PrefsJsonOptions);
-                File.WriteAllText(path, json);
+                WriteFileSafely(path, json);
 
                 if (makeActive)
                 {
@@ -1220,10 +1376,12 @@ namespace KeyClickOverlay
                     if (string.Equals(_prefs.LastPresetPath, path, StringComparison.OrdinalIgnoreCase))
                         SavePrefs();
                 }
+                return true;
             }
             catch (Exception ex)
             {
                 ShowModernInfo("Preset error", "Failed to save preset:\n" + ex.Message, ok: "OK", icon: DialogIcon.Error);
+                return false;
             }
         }
 
@@ -1241,8 +1399,14 @@ namespace KeyClickOverlay
                 return;
             }
 
-            SaveCurrentStateToPreset(path!, makeActive: true);
-            ShowModernInfoAuto("Preset saved", "The active preset was overwritten with the current settings.", milliseconds: 2500, icon: DialogIcon.Success);
+            if (SaveCurrentStateToPreset(path!, makeActive: true))
+            {
+                ShowModernInfoAuto(
+                    "Preset saved",
+                    "The active preset was overwritten with the current settings.",
+                    milliseconds: 2500,
+                    icon: DialogIcon.Success);
+            }
         }
 
 
@@ -3273,7 +3437,7 @@ namespace KeyClickOverlay
                         var data = BuildPresetFromCurrent();
                         string path = GetUniquePresetPath(proposed);
                         string json = JsonSerializer.Serialize(data, PrefsJsonOptions);
-                        File.WriteAllText(path, json);
+                        WriteFileSafely(path, json);
 
                         // Apply immediately so it's remembered as last-used
                         ApplyPresetFromPath(path);
@@ -8188,6 +8352,191 @@ namespace KeyClickOverlay
             this.Topmost = true;
 
             ReassertTopmost();
+        }
+
+        /// <summary>
+        /// Shows a preset error dialog with options to open the original preset and diagnostic report.
+        /// Only OK closes the dialog.
+        /// </summary>
+        private void ShowPresetErrorDialog(string presetPath, string reportPath, JsonException exception)
+        {
+            SolidColorBrush CreateFallbackSurface()
+            {
+                var brush = new SolidColorBrush(AppTheme.IsDark ? Color.FromRgb(43, 43, 43) : Color.FromRgb(249, 249, 249));
+
+                if (brush.CanFreeze)
+                    brush.Freeze();
+
+                return brush;
+            }
+
+            var fallbackSurface = CreateFallbackSurface();
+
+            bool isPreferences = IOPath.GetFullPath(presetPath)
+                .Equals(IOPath.GetFullPath(PrefsPath), StringComparison.OrdinalIgnoreCase);
+
+            string fileType = isPreferences ? "preferences" : "preset";
+            string fileName = IOPath.GetFileName(presetPath);
+            string location = exception.LineNumber is long line
+                ? $"Invalid JSON at line {line + 1}" +
+                  (exception.BytePositionInLine is long position ? $", byte position {position + 1}." : ".")
+                : $"The {fileType} file contains invalid JSON.";
+
+            string message =
+                $"KeyClickOverlay couldn't load the {fileType} file \"{fileName}\".\n\n" +
+                $"{location}\n\n" +
+                $"A diagnostic report has been created. Your original {fileType} file has not been modified.";
+
+            var dlg = CreateDialogWindow(
+                isPreferences ? "Preferences could not be loaded" : "Preset could not be loaded",
+                fallbackSurface,
+                centerOnScreen: true);
+
+            dlg.Width = 480;
+            dlg.MinWidth = 480;
+            dlg.MaxWidth = 480;
+            dlg.MinHeight = 0;
+            dlg.SizeToContent = SizeToContent.Height;
+
+            var outerGrid = new Grid { Background = fallbackSurface };
+            outerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            outerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var contentGrid = CreateDialogMessageContent(message, DialogIcon.Error, fallbackSurface);
+
+            Grid.SetRow(contentGrid, 0);
+            outerGrid.Children.Add(contentGrid);
+
+            var buttonPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(20, 8, 20, 16)
+            };
+
+            var presetButton = new Button
+            {
+                Content = isPreferences ? "Open preferences" : "Open preset",
+                MinWidth = 108,
+                Height = 34,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+
+            var reportButton = new Button
+            {
+                Content = "Open report",
+                MinWidth = 108,
+                Height = 34,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+
+            var okButton = new Button
+            {
+                Content = "OK",
+                MinWidth = 88,
+                Height = 34,
+                IsDefault = true
+            };
+
+            buttonPanel.Children.Add(presetButton);
+            buttonPanel.Children.Add(reportButton);
+            buttonPanel.Children.Add(okButton);
+
+            Grid.SetRow(buttonPanel, 1);
+            outerGrid.Children.Add(buttonPanel);
+
+            var (dialogRoot, titleBar) = CreateDialogRoot(dlg, outerGrid, fallbackSurface);
+
+            void OnThemeChanged(object? sender, EventArgs e)
+            {
+                var surface = CreateFallbackSurface();
+
+                ApplyWpfUiDialogTheme(dlg);
+                NativeMethods.TryApplyImmersiveDarkTitleBar(dlg, AppTheme.IsDark);
+
+                dlg.Background = surface;
+                dialogRoot.Background = surface;
+                titleBar.Background = surface;
+                outerGrid.Background = surface;
+                contentGrid.Background = surface;
+            }
+
+            AppTheme.Changed += OnThemeChanged;
+            dlg.Closed += (_, __) => AppTheme.Changed -= OnThemeChanged;
+
+            void OpenFile(string path)
+            {
+                try
+                {
+                    // Open with the Windows default application.
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = path,
+                        UseShellExecute = true
+                    });
+                }
+                catch (System.ComponentModel.Win32Exception ex)
+                    when (ex.NativeErrorCode == 1155) // ERROR_NO_ASSOCIATION
+                {
+                    try
+                    {
+                        // No default application: fall back to Notepad.
+                        var startInfo = new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = "notepad.exe",
+                            UseShellExecute = true
+                        };
+
+                        startInfo.ArgumentList.Add(path);
+                        System.Diagnostics.Process.Start(startInfo);
+                    }
+                    catch (Exception fallbackEx)
+                    {
+                        ShowModernInfo(
+                            "Unable to open file",
+                            $"KeyClickOverlay couldn't open:\n{path}\n\n{fallbackEx.Message}",
+                            icon: DialogIcon.Error);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ShowModernInfo(
+                        "Unable to open file",
+                        $"KeyClickOverlay couldn't open:\n{path}\n\n{ex.Message}",
+                        icon: DialogIcon.Error);
+                }
+            }
+
+            presetButton.Click += (_, __) => OpenFile(presetPath);
+            reportButton.Click += (_, __) => OpenFile(reportPath);
+
+            okButton.Click += (_, __) =>
+            {
+                dlg.DialogResult = true;
+                dlg.Close();
+            };
+
+            _topmostTarget = dlg;
+
+            this.Topmost = false;
+            dlg.Topmost = true;
+
+            ReassertTopmost();
+            PlayDialogSound(DialogIcon.Error);
+
+            try
+            {
+                dlg.ShowDialog();
+            }
+            finally
+            {
+                _topmostTarget = null;
+
+                dlg.Topmost = false;
+                this.Topmost = true;
+
+                ReassertTopmost();
+            }
         }
 
         /// <summary>
